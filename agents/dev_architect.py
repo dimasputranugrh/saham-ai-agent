@@ -44,11 +44,59 @@ def is_authorized_owner(chat_id: int | str | None) -> bool:
     return str(chat_id).strip() == owner_id
 
 
-def _call_architect_llm(system_prompt: str, user_prompt: str, temperature: float = 0.15) -> Optional[str]:
+def _find_agy_binary() -> Optional[str]:
+    """Mencari lokasi binary Antigravity CLI (agy) di WSL lokal."""
+    candidates = [
+        "/home/dimas/.local/bin/agy",
+        "/home/dimas/.gemini/antigravity-cli/bin/agy",
+        shutil.which("agy") or "",
+    ]
+    for c in candidates:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def _call_local_agy_argon(prompt: str, allow_edits: bool = False, timeout_sec: int = 90) -> Optional[str]:
     """
-    Memanggil otak AI Architect (Prioritas: Gemini 3.6 Flash -> Groq OpenAI 120B -> Groq Qwen 3.8).
-    Berjalan baik di WSL Lokal maupun di GitHub Actions Cloud!
+    Memanggil Antigravity CLI (`agy`) asli dengan model `gemini-4-argon` saat berjalan di WSL lokal!
     """
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        return None
+    agy_bin = _find_agy_binary()
+    if not agy_bin:
+        return None
+    cmd = [agy_bin, "--model", "gemini-4-argon"]
+    if allow_edits:
+        cmd.extend(["--mode", "accept-edits", "--dangerously-skip-permissions"])
+    cmd.extend(["-p", prompt])
+    try:
+        res = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+        if res.returncode == 0 and res.stdout and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _call_architect_llm(system_prompt: str, user_prompt: str, temperature: float = 0.15) -> tuple[Optional[str], str]:
+    """
+    Memanggil otak AI Architect:
+    - Prioritas 0 (Saat di WSL Lokal): Antigravity CLI `gemini-4-argon`
+    - Prioritas 1 (Cloud / Fallback): Google `gemini-3.6-flash`
+    - Prioritas 2 (Cloud / Fallback): OpenAI `openai/gpt-oss-120b` (via Groq)
+    """
+    # 0. Jika di WSL Lokal dan binary `agy` tersedia, gunakan langsung `gemini-4-argon`!
+    agy_out = _call_local_agy_argon(f"{system_prompt}\n\n{user_prompt}", allow_edits=False, timeout_sec=60)
+    if agy_out:
+        return agy_out, "gemini-4-argon (via Antigravity CLI)"
+
     # 1. Coba Gemini 3.6 Flash / 3 Flash Preview
     gem_key = config.GEMINI_API_KEY
     if gem_key and not gem_key.startswith("masukkan_"):
@@ -71,7 +119,7 @@ def _call_architect_llm(system_prompt: str, user_prompt: str, temperature: float
                         ),
                     )
                     if resp and resp.text:
-                        return resp.text.strip()
+                        return resp.text.strip(), mod
                 except Exception:
                     continue
         except Exception:
@@ -96,10 +144,10 @@ def _call_architect_llm(system_prompt: str, user_prompt: str, temperature: float
                     timeout=20,
                 )
                 if r.status_code == 200:
-                    return r.json()["choices"][0]["message"]["content"].strip()
+                    return r.json()["choices"][0]["message"]["content"].strip(), f"groq:{mod}"
             except Exception:
                 continue
-    return None
+    return None, "unavailable"
 
 
 def _select_relevant_files(query: str, max_files: int = 5) -> dict[str, str]:
@@ -174,9 +222,14 @@ def ask_project_architect(question: str, chat_id: int | str | None = None) -> st
         f"Isi file kode yang relevan:\n{json.dumps(files_ctx, ensure_ascii=False)}"
     )
 
-    ans = _call_architect_llm(sys_prompt, user_prompt, temperature=0.2)
+    ans, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.2)
     if ans:
-        return f"🤖 *Antigravity Architect ({mode_env}):*\n\n{ans}"
+        return (
+            f"🤖 *Antigravity Architect ({mode_env})*\n"
+            f"🧠 _Model: `{used_model}`_\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{ans}"
+        )
     return "⚠️ Maaf Bos, koneksi ke server AI Architect sedang sibuk. Silakan coba beberapa saat lagi."
 
 
@@ -241,7 +294,7 @@ def upgrade_project_code(instruction: str, chat_id: int | str | None = None) -> 
         f"Isi file-file project saat ini:\n{json.dumps(files_ctx, ensure_ascii=False)}"
     )
 
-    raw_resp = _call_architect_llm(sys_prompt, user_prompt, temperature=0.1)
+    raw_resp, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.1)
     plan = _parse_json_object(raw_resp or "")
     if not plan or not isinstance(plan.get("edits"), list) or not plan["edits"]:
         return (
@@ -312,6 +365,7 @@ def upgrade_project_code(instruction: str, chat_id: int | str | None = None) -> 
     files_str = ", ".join([f"`{f}`" for f in modified_files])
     return (
         f"🚀 *UPGRADE PROJECT BERHASIL ({mode_env})!*\n"
+        f"🧠 _Model: `{used_model}`_\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         f"• *Ringkasan Upgrade:* {summary}\n"
         f"• *File yang Diperbarui:* {files_str}\n"
