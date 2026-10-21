@@ -13,6 +13,7 @@ from telegram.ext import (
 )
 
 import config
+from agents.dev_architect import ask_project_architect, upgrade_project_code
 from agents.team import (
     analyze_single_stock_with_team,
     chat_with_ai_team,
@@ -95,6 +96,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/evaluasi` — Lihat rapor akurasi, Win Rate, Expectancy, & Self-Learning AI\n"
         "• `/rapor_ai` — Rapor Mingguan 5 AI (Siapa paling jago vs Siapa harus diganti)\n"
         "• `/ganti_ai` — Ganti AI yang kurang akurat dengan model AI gratis lain\n"
+        "• `/agy <pertanyaan>` — Tanya Antigravity Architect tentang kode/project ini\n"
+        "• `/upgrade <instruksi>` — Perintahkan AI meng-upgrade kode project & push ke GitHub\n"
         "• `/memori <KODE>` — Lihat ingatan & pelajaran historis AI pada saham tertentu\n"
         "• `/watchlist` — Lihat / tambah / hapus daftar saham pantauan\n\n"
         "💬 _Silakan langsung coba ketik `/cek BBCA` atau `/rapor_ai` sekarang!_"
@@ -382,6 +385,32 @@ async def cmd_ganti_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_safe_markdown(update.message, report)
 
 
+async def cmd_agy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    _auto_register_chat_id(chat_id)
+    query = " ".join(context.args) if context.args else ""
+    wait_msg = await update.message.reply_text(
+        "🤖 _Antigravity Architect sedang memeriksa kode project Anda..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    reply = await asyncio.to_thread(ask_project_architect, query, chat_id)
+    await wait_msg.delete()
+    await _send_safe_markdown(update.message, reply)
+
+
+async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    _auto_register_chat_id(chat_id)
+    instruction = " ".join(context.args) if context.args else ""
+    wait_msg = await update.message.reply_text(
+        "🛠️ _Antigravity Architect sedang menyusun upgrade kode, menguji sintaks, & sinkronisasi ke GitHub..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    reply = await asyncio.to_thread(upgrade_project_code, instruction, chat_id)
+    await wait_msg.delete()
+    await _send_safe_markdown(update.message, reply)
+
+
 async def handle_free_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -478,6 +507,8 @@ def start_telegram_bot():
     app.add_handler(CommandHandler("rapor_ai", cmd_rapor_ai))
     app.add_handler(CommandHandler("panel_ai", cmd_rapor_ai))
     app.add_handler(CommandHandler("ganti_ai", cmd_ganti_ai))
+    app.add_handler(CommandHandler("agy", cmd_agy))
+    app.add_handler(CommandHandler("upgrade", cmd_upgrade))
     app.add_handler(CommandHandler("memori", cmd_memori))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_free_chat))

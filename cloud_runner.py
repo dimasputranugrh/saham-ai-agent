@@ -3,6 +3,7 @@ import sys
 import pytz
 import requests
 import config
+from agents.dev_architect import ask_project_architect, upgrade_project_code
 from agents.team import (
     analyze_single_stock_with_team,
     chat_with_ai_team,
@@ -72,6 +73,12 @@ def process_pending_telegram_messages():
             elif text.startswith("/ganti_ai"):
                 parts = text.split()
                 send_telegram_direct(swap_panel_ai_model(parts[1:]), chat_id)
+            elif text.startswith("/agy"):
+                query = text[len("/agy"):].strip()
+                send_telegram_direct(ask_project_architect(query, chat_id), chat_id)
+            elif text.startswith("/upgrade"):
+                inst = text[len("/upgrade"):].strip()
+                send_telegram_direct(upgrade_project_code(inst, chat_id), chat_id)
             elif text.startswith("/memori"):
                 parts = text.split()
                 ticker = parts[1] if len(parts) > 1 else "TLKM"
