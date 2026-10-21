@@ -21,6 +21,8 @@ from agents.team import (
     generate_morning_dsu_report,
     get_performance_dashboard_report,
     get_ticker_memory_report,
+    get_weekly_ai_report,
+    swap_panel_ai_model,
 )
 from memory.learning_loop import LearningLoopOrchestrator
 from analyzer.technical import analyze_ticker_quant
@@ -91,9 +93,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/sb_jual <KODE> <LOT> <HARGA>` — Eksekusi Jual otomatis di Stockbit (contoh: `/sb_jual BBCA 1 5450`)\n"
         "• `/sb_saldo` — Potret Portofolio & Saldo RDN Stockbit Anda sekarang\n"
         "• `/evaluasi` — Lihat rapor akurasi, Win Rate, Expectancy, & Self-Learning AI\n"
+        "• `/rapor_ai` — Rapor Mingguan 5 AI (Siapa paling jago vs Siapa harus diganti)\n"
+        "• `/ganti_ai` — Ganti AI yang kurang akurat dengan model AI gratis lain\n"
         "• `/memori <KODE>` — Lihat ingatan & pelajaran historis AI pada saham tertentu\n"
         "• `/watchlist` — Lihat / tambah / hapus daftar saham pantauan\n\n"
-        "💬 _Silakan langsung coba ketik `/dsu` atau `/cek BBCA` sekarang!_"
+        "💬 _Silakan langsung coba ketik `/cek BBCA` atau `/rapor_ai` sekarang!_"
     )
     await _send_safe_markdown(update.message, welcome)
 
@@ -360,6 +364,24 @@ async def cmd_memori(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_safe_markdown(update.message, report)
 
 
+async def cmd_rapor_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _auto_register_chat_id(update.effective_chat.id)
+    wait_msg = await update.message.reply_text(
+        "🏆 _Menghitung akurasi masing-masing dari 5 AI & menyusun Rapor Mingguan..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    report = await asyncio.to_thread(get_weekly_ai_report)
+    await wait_msg.delete()
+    await _send_safe_markdown(update.message, report)
+
+
+async def cmd_ganti_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _auto_register_chat_id(update.effective_chat.id)
+    args = list(context.args) if context.args else []
+    report = await asyncio.to_thread(swap_panel_ai_model, args)
+    await _send_safe_markdown(update.message, report)
+
+
 async def handle_free_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -419,6 +441,16 @@ async def scheduled_learning_evaluation(context: ContextTypes.DEFAULT_TYPE):
     await asyncio.to_thread(orchestrator.run_evaluation_and_learning_cycle)
 
 
+async def scheduled_weekly_ai_report(context: ContextTypes.DEFAULT_TYPE):
+    """Mengirim Rapor Mingguan 5 AI setiap hari Jumat sore (16:20 WIB)."""
+    chat_id = config.TELEGRAM_CHAT_ID
+    if not chat_id or chat_id.startswith("masukkan_"):
+        return
+    logger.info("Mengirim Rapor Mingguan 5 AI otomatis...")
+    report = await asyncio.to_thread(get_weekly_ai_report)
+    await _send_safe_markdown(context.bot, report, chat_id=chat_id)
+
+
 def start_telegram_bot():
     token = config.TELEGRAM_BOT_TOKEN
     if not token or token.startswith("masukkan_"):
@@ -443,6 +475,9 @@ def start_telegram_bot():
     app.add_handler(CommandHandler("sb_jual", cmd_sb_jual))
     app.add_handler(CommandHandler("evaluasi", cmd_evaluasi))
     app.add_handler(CommandHandler("performa", cmd_evaluasi))
+    app.add_handler(CommandHandler("rapor_ai", cmd_rapor_ai))
+    app.add_handler(CommandHandler("panel_ai", cmd_rapor_ai))
+    app.add_handler(CommandHandler("ganti_ai", cmd_ganti_ai))
     app.add_handler(CommandHandler("memori", cmd_memori))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_free_chat))
@@ -485,6 +520,14 @@ def start_telegram_bot():
             time=dt.time(hour=close_h, minute=close_m, tzinfo=wib),
             days=(1, 2, 3, 4, 5),
             name="market_close",
+        )
+
+        # 5. Rapor Mingguan 5 AI setiap hari Jumat sore (16:20 WIB)
+        job_queue.run_daily(
+            scheduled_weekly_ai_report,
+            time=dt.time(hour=16, minute=20, tzinfo=wib),
+            days=(5,),
+            name="weekly_ai_report_friday",
         )
 
     logger.info("🤖 Karyawan AI Saham siap bekerja! Menunggu perintah di Telegram & menjalankan jadwal harian...")

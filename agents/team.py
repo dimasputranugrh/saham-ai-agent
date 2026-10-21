@@ -5,6 +5,12 @@ from google import genai
 from google.genai import types
 
 import config
+from agents.ai_panel import (
+    FREE_REPLACEMENT_MODELS_CATALOG,
+    format_panel_consensus_section,
+    generate_weekly_ai_leaderboard_report,
+    run_5_ai_panel_consensus,
+)
 from analyzer.technical import TechnicalSnapshot, get_ihsg_overview, scan_watchlist_quant, analyze_ticker_quant
 from analyzer.news import fetch_market_news_indonesia, fetch_ticker_news
 from memory.learning_loop import LearningLoopOrchestrator
@@ -19,7 +25,8 @@ def _get_gemini_client():
         return genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(
-                retry_options=types.HttpRetryOptions(attempts=1)
+                timeout=8000,
+                retry_options=types.HttpRetryOptions(attempts=1),
             ),
         )
     except Exception:
@@ -105,11 +112,27 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
                 execution_mode=config.EXECUTION_MODE,
             )
             if ctx:
+                panel_res = run_5_ai_panel_consensus(
+                    snap=s,
+                    ihsg_info=ihsg,
+                    mem_ctx=ctx,
+                    db=orchestrator.db,
+                    use_live_llm=False,
+                )
                 d_snap = s.to_dict()
-                d_snap["final_direction"] = ctx["final_direction"]
+                d_snap["final_direction"] = panel_res["final_decision"]
                 d_snap["calibrated_confidence"] = ctx["calibrated_confidence"]
                 d_snap["confidence_basis"] = ctx["confidence_basis"]
                 d_snap["historical_memories"] = ctx["memory_bundle"]["memories"]
+                d_snap["panel_5_ai_consensus"] = {
+                    "suara_setuju_beli": f"{panel_res['buy_count']}/{panel_res['total_ai']} AI ({panel_res['agreement_pct']:.0f}%)",
+                    "works_pct": panel_res["works_pct"],
+                    "vonis_hakim_ketua": panel_res["verdict_label"],
+                    "masukan_5_ai": [
+                        f"{v['ai_name']}: {v['vote_direction']} ({v['confidence_pct']:.0f}%) - {v['reasoning_summary']}"
+                        for v in panel_res["votes"]
+                    ],
+                }
                 enriched_picks.append(d_snap)
             else:
                 enriched_picks.append(s.to_dict())
@@ -248,13 +271,29 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         execution_mode=config.EXECUTION_MODE,
     )
 
+    # Jalankan 5 AI Gratis secara paralel untuk mendapatkan masukan masing-masing + persentase kelayakan
+    panel_consensus = run_5_ai_panel_consensus(
+        snap=snap,
+        ihsg_info=ihsg_info,
+        mem_ctx=mem_ctx,
+        db=orchestrator.db,
+        use_live_llm=True,
+    )
+    panel_section_md = format_panel_consensus_section(panel_consensus)
+
     payload = {
         "data_teknikal_kuantitatif": snap.to_dict(),
         "berita_emiten_terbaru": news_items,
         "memori_pembelajaran_historis": mem_ctx["memory_bundle"] if mem_ctx else {},
         "calibrated_confidence": mem_ctx["calibrated_confidence"] if mem_ctx else 0.5,
         "confidence_basis": mem_ctx["confidence_basis"] if mem_ctx else "",
-        "final_direction_after_memory": mem_ctx["final_direction"] if mem_ctx else snap.direction,
+        "final_direction_after_memory": panel_consensus["final_decision"],
+        "hasil_sidang_5_ai": {
+            "suara_setuju_beli": f"{panel_consensus['buy_count']}/{panel_consensus['total_ai']} AI ({panel_consensus['agreement_pct']:.0f}%)",
+            "persentase_works": f"{panel_consensus['works_pct']:.1f}%",
+            "vonis_hakim_ketua": panel_consensus["verdict_label"],
+            "detail_suara_5_ai": panel_consensus["votes"],
+        },
     }
     sys_inst = (
         "Anda adalah tim 4 Karyawan AI saham pribadi untuk Bos yang pemula (tidak paham istilah rumit saham).\n"
@@ -269,15 +308,15 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         "   - 💰 *Target Jual Untung (Ambil Cuan):* `take_profit_1` & `take_profit_2` (Estimasi untung bersih setelah potongan biaya transaksi: `estimated_net_return_pct`%)\n"
         "   - 🛑 *Rem Darurat & Pembatal Sinyal:* `stop_loss` (`invalidation_conditions`)\n"
         "   - 🎯 *Tingkat Keyakinan Terkalibrasi:* `calibrated_confidence` (`confidence_basis`)\n"
-        "4. 🎯 *Arif (Kesimpulan Jam Beli & Jam Jual)*: Gunakan `final_direction_after_memory` (**BUY**, **WAIT**, atau **AVOID**) beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
+        "4. 🎯 *Arif (Hakim Ketua / Kesimpulan Jam Beli & Jam Jual)*: Gunakan keputusan dari `hasil_sidang_5_ai` (**BUY** atau **WAIT**) beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
     )
     ai_text = _generate_with_gemini(
-        contents=f"Berikan laporan analisis 4 karyawan AI untuk saham {code}:\n{json.dumps(payload, ensure_ascii=False)}",
+        contents=f"Berikan laporan analisis untuk saham {code}:\n{json.dumps(payload, ensure_ascii=False)}",
         system_instruction=sys_inst,
         temperature=0.2,
     )
     if ai_text:
-        return ai_text
+        return f"{ai_text}\n\n━━━━━━━━━━━━━━━━━━━━━━\n{panel_section_md}"
 
     # Fallback laporan presisi
     lines = [
@@ -331,6 +370,7 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         lines.extend(["", "🧠 *MEMORI PEMBELAJARAN HISTORIS TERKAIT:*"])
         for m in mem_ctx["memory_bundle"]["memories"][:2]:
             lines.append(f"• [{m['validity_level']}] {m['lesson']}")
+    lines.extend(["", "━━━━━━━━━━━━━━━━━━━━━━", panel_section_md])
     return "\n".join(lines)
 
 
@@ -354,9 +394,10 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
     qualified = [s for s in snapshots if s.quant_score >= threshold and s.direction == "BUY"]
     top_3 = qualified[:3] if qualified else snapshots[:3]
 
+    panel_by_ticker: dict[str, dict] = {}
     for s in top_3:
         try:
-            orchestrator.analyze_and_record_with_memory(
+            ctx = orchestrator.analyze_and_record_with_memory(
                 ticker=s.ticker,
                 snap=s,
                 ihsg_info=ihsg_info,
@@ -364,6 +405,13 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
                 horizon_bars=8,
                 horizon_minutes=120,
                 execution_mode=config.EXECUTION_MODE,
+            )
+            panel_by_ticker[s.ticker] = run_5_ai_panel_consensus(
+                snap=s,
+                ihsg_info=ihsg_info,
+                mem_ctx=ctx,
+                db=orchestrator.db,
+                use_live_llm=False,
             )
         except Exception:
             pass
@@ -385,9 +433,16 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
             if s.current_price >= s.intraday_vwap
             else "Harga lagi agak turun, tunggu antri murah di bawah 👇"
         )
+        p_res = panel_by_ticker.get(s.ticker)
+        voting_line = (
+            f"   • 🗳️ *Suara 5 AI:* *{p_res['buy_count']}/{p_res['total_ai']} AI Setuju Beli* (*{p_res['works_pct']:.1f}% Works*) ➡️ {p_res['final_decision']}"
+            if p_res
+            else f"   • 🗳️ *Keputusan:* {s.direction}"
+        )
         lines.extend([
             f"\n*{idx}. Saham {code}* — Nilai: *{s.quant_score}/100*",
             f"   • 💵 *Harga Sekarang:* *{_fmt_rp(s.current_price, s.is_idx)}* ({s.change_pct:+.2f}%)",
+            voting_line,
             f"   • 👀 *Kondisi:* {kondisi_simpel}",
             f"   • 🛒 *Beli di Harga:* *{_fmt_rp(s.entry_low, s.is_idx)} – {_fmt_rp(s.entry_high, s.is_idx)}*",
             f"   • 💰 *Jual Untung (Cuan) di:* *{_fmt_rp(s.take_profit_1, s.is_idx)}* (+{tp1_pct:.1f}%) atau *{_fmt_rp(s.take_profit_2, s.is_idx)}*",
@@ -575,3 +630,75 @@ def get_ticker_memory_report(ticker_input: str) -> str:
                 f"   • Pelajaran: {m['lesson']}",
             ])
     return "\n".join(lines)
+
+
+def get_weekly_ai_report() -> str:
+    """Menjalankan siklus evaluasi terbaru lalu menyusun Rapor Mingguan 5 AI."""
+    orchestrator = LearningLoopOrchestrator()
+    try:
+        orchestrator.run_evaluation_and_learning_cycle()
+    except Exception:
+        pass
+    return generate_weekly_ai_leaderboard_report(db=orchestrator.db)
+
+
+def swap_panel_ai_model(args: list[str]) -> str:
+    """
+    Mengganti salah satu dari 5 AI di panel dengan model AI gratis lain,
+    atau menampilkan daftar model jika dipanggil tanpa argumen.
+    """
+    orchestrator = LearningLoopOrchestrator()
+    db = orchestrator.db
+
+    if not args:
+        slots = db.get_ai_panel_registry()
+        lines = [
+            "🤖 *SUSUNAN 5 AI PANELIS SAAT INI:*",
+            "━━━━━━━━━━━━━━━━━━━━━━",
+        ]
+        for s in slots:
+            lines.append(
+                f"• `{s['slot_id']}` — *{s['ai_name']}*\n"
+                f"  Model: `{s['provider']}:{s['model_id']}`\n"
+                f"  Fokus: _{s['role_focus']}_"
+            )
+        lines.extend([
+            "",
+            "📦 *DAFTAR MODEL AI GRATIS PENGGANTI:*",
+        ])
+        for mod_spec, desc in FREE_REPLACEMENT_MODELS_CATALOG:
+            lines.append(f"• `{mod_spec}` — {desc}")
+        lines.extend([
+            "",
+            "🛠️ *CARA MENGGANTI AI YANG JELEK:*",
+            "Ketik: `/ganti_ai <SLOT> <NAMA_MODEL>`",
+            "Contoh:",
+            "• `/ganti_ai AI_3 gemini-3.8-flash`",
+            "• `/ganti_ai AI_2 gemma-4-26b-a4b-it`",
+            "• `/ganti_ai AI_4 groq:llama-3.3-70b-versatile`",
+            "• `/ganti_ai reset` _(kembalikan 5 AI ke setelan pabrik)_",
+        ])
+        return "\n".join(lines)
+
+    first = args[0].strip().lower()
+    if first == "reset":
+        db.reset_ai_panel_registry()
+        return "✅ *Berhasil!* Susunan ke-5 AI Panelis sudah dikembalikan ke setelan awal."
+
+    if len(args) < 2:
+        return "⚠️ Format kurang lengkap. Contoh: `/ganti_ai AI_3 gemini-3.8-flash` atau ketik `/ganti_ai` untuk melihat daftar model."
+
+    slot_id = args[0].strip().upper()
+    new_model = args[1].strip()
+    custom_name = " ".join(args[2:]).strip() if len(args) > 2 else None
+    try:
+        updated = db.update_ai_panel_slot(slot_id, new_model, custom_name)
+        return (
+            f"✅ *BERHASIL MENGGANTI {updated['slot_id']}!*\n\n"
+            f"• *Nama Baru:* *{updated['ai_name']}*\n"
+            f"• *Provider & Model:* `{updated['provider']}:{updated['model_id']}`\n"
+            f"• *Fokus Tugas:* _{updated['role_focus']}_\n\n"
+            "Mulai analisis berikutnya (`/cek`, `/scan`, `/dsu`), AI baru ini langsung ikut memberikan suara dan dinilai di rapor mingguan `/rapor_ai`!"
+        )
+    except Exception as e:
+        return f"⚠️ Gagal mengganti AI: {e}"

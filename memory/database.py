@@ -94,6 +94,13 @@ class MemoryDatabase:
                     (1, "initial_persistent_memory_and_learning_schema", now_wib_iso()),
                 )
 
+            if 2 not in applied:
+                self._migration_v2_ai_panel(conn)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+                    (2, "multi_ai_panel_registry_and_votes", now_wib_iso()),
+                )
+
     def _migration_v1(self, conn: sqlite3.Connection) -> None:
         conn.executescript(
             """
@@ -561,3 +568,270 @@ class MemoryDatabase:
         with sqlite3.connect(str(src)) as src_conn:
             with sqlite3.connect(str(self.db_path)) as dst_conn:
                 src_conn.backup(dst_conn)
+
+    def _migration_v2_ai_panel(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            -- 6. AI PANEL REGISTRY (5 Configurable Free AI Slots)
+            CREATE TABLE IF NOT EXISTS ai_panel_registry (
+                slot_id TEXT PRIMARY KEY,
+                ai_name TEXT NOT NULL,
+                provider TEXT NOT NULL DEFAULT 'gemini',
+                model_id TEXT NOT NULL,
+                role_focus TEXT NOT NULL,
+                temperature REAL NOT NULL DEFAULT 0.2,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                updated_at_wib TEXT NOT NULL
+            );
+
+            -- 7. AI PANEL VOTES (Individual AI Predictions & Outcome Grading)
+            CREATE TABLE IF NOT EXISTS ai_panel_votes (
+                vote_id TEXT PRIMARY KEY,
+                analysis_id TEXT NOT NULL,
+                created_at_wib TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                slot_id TEXT NOT NULL,
+                ai_name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                vote_direction TEXT NOT NULL CHECK (vote_direction IN ('BUY', 'WAIT')),
+                confidence_pct REAL NOT NULL CHECK (confidence_pct >= 0.0 AND confidence_pct <= 100.0),
+                reasoning_summary TEXT NOT NULL,
+                outcome_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (
+                    outcome_status IN (
+                        'PENDING',
+                        'CORRECT_BUY_WIN',
+                        'WRONG_BUY_LOSS',
+                        'CORRECT_WAIT_SAVED',
+                        'MISSED_WAIT_OPPORTUNITY',
+                        'NEUTRAL'
+                    )
+                ),
+                outcome_net_return_pct REAL DEFAULT 0.0,
+                evaluated_at_wib TEXT,
+                UNIQUE(analysis_id, slot_id),
+                FOREIGN KEY (analysis_id) REFERENCES analysis_history(analysis_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ai_votes_analysis
+                ON ai_panel_votes(analysis_id);
+            CREATE INDEX IF NOT EXISTS idx_ai_votes_slot_model
+                ON ai_panel_votes(slot_id, model_id, outcome_status, created_at_wib DESC);
+            """
+        )
+        self._seed_default_ai_panel(conn)
+
+    def _seed_default_ai_panel(self, conn: sqlite3.Connection) -> None:
+        now_iso = now_wib_iso()
+        default_slots = [
+            (
+                "AI_1",
+                "AI-1 (Momentum Scalper)",
+                "gemini",
+                "gemini-3.6-flash",
+                "Fokus pada ledakan volume intraday, posisi harga di atas VWAP, dan momentum kenaikan cepat.",
+                0.2,
+            ),
+            (
+                "AI_2",
+                "AI-2 (Jaksa Risiko / Skeptis)",
+                "gemini",
+                "gemini-3-flash-preview",
+                "Fokus mencari bahaya jebakan pucuk (bull trap), spread mahal, kelemahan IHSG, dan alasan menahan diri.",
+                0.15,
+            ),
+            (
+                "AI_3",
+                "AI-3 (Gemma-4 OpenMoE Bandar)",
+                "gemini",
+                "gemma-4-26b-a4b-it",
+                "Fokus membaca akumulasi bandar, kekuatan aliran dana (volume spike), dan struktur candle.",
+                0.25,
+            ),
+            (
+                "AI_4",
+                "AI-4 (Trend & Swing Guard)",
+                "gemini",
+                "gemini-3.5-flash-lite",
+                "Fokus pada keselarasan tren harian (EMA20/EMA50), jarak ke Support/Resistance, dan rasio Risk/Reward.",
+                0.2,
+            ),
+            (
+                "AI_5",
+                "AI-5 (Quant Bayesian Memory)",
+                "quant",
+                "quant-bayesian-v1",
+                "Murni menghitung probabilitas matematika, biaya transaksi 0.40%, dan rekam jejak database memori historis.",
+                0.0,
+            ),
+        ]
+        for slot_id, ai_name, provider, model_id, role_focus, temp in default_slots:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO ai_panel_registry (
+                    slot_id, ai_name, provider, model_id, role_focus, temperature, is_active, updated_at_wib
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                """,
+                (slot_id, ai_name, provider, model_id, role_focus, temp, now_iso),
+            )
+
+    def get_ai_panel_registry(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM ai_panel_registry WHERE is_active = 1 ORDER BY slot_id ASC"
+            ).fetchall()
+            if not rows:
+                self._seed_default_ai_panel(conn)
+                rows = conn.execute(
+                    "SELECT * FROM ai_panel_registry WHERE is_active = 1 ORDER BY slot_id ASC"
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def reset_ai_panel_registry(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM ai_panel_registry")
+            self._seed_default_ai_panel(conn)
+        return self.get_ai_panel_registry()
+
+    def update_ai_panel_slot(
+        self,
+        slot_id: str,
+        new_model_spec: str,
+        custom_name: Optional[str] = None,
+    ) -> dict[str, Any]:
+        slot = slot_id.strip().upper()
+        if not slot.startswith("AI_"):
+            slot = f"AI_{slot}"
+        if slot not in {"AI_1", "AI_2", "AI_3", "AI_4", "AI_5"}:
+            raise ValueError(f"Slot tidak valid: {slot_id}. Pilih AI_1 sampai AI_5.")
+
+        spec = new_model_spec.strip()
+        if ":" in spec:
+            provider, model_id = spec.split(":", 1)
+            provider = provider.strip().lower()
+            model_id = model_id.strip()
+        elif spec.lower().startswith("quant"):
+            provider = "quant"
+            model_id = spec
+        else:
+            provider = "gemini"
+            model_id = spec
+
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT * FROM ai_panel_registry WHERE slot_id = ?", (slot,)
+            ).fetchone()
+            old_name = existing["ai_name"] if existing else slot
+            new_name = custom_name or f"{slot.replace('_', '-')} ({model_id[:22]})"
+            conn.execute(
+                """
+                UPDATE ai_panel_registry
+                SET ai_name = ?, provider = ?, model_id = ?, updated_at_wib = ?
+                WHERE slot_id = ?
+                """,
+                (new_name, provider, model_id, now_wib_iso(), slot),
+            )
+            row = conn.execute(
+                "SELECT * FROM ai_panel_registry WHERE slot_id = ?", (slot,)
+            ).fetchone()
+            return dict(row) if row else {}
+
+    def save_ai_panel_votes(self, analysis_id: str, ticker: str, votes: list[dict[str, Any]]) -> None:
+        now_iso = now_wib_iso()
+        norm_ticker = config.normalize_ticker(ticker)
+        with self.connect() as conn:
+            for v in votes:
+                vote_dir = str(v.get("vote_direction", "WAIT")).upper()
+                if vote_dir not in ("BUY", "WAIT"):
+                    vote_dir = "WAIT"
+                conf = max(0.0, min(100.0, _clean_float(v.get("confidence_pct"), 50.0) or 50.0))
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO ai_panel_votes (
+                        vote_id, analysis_id, created_at_wib, ticker,
+                        slot_id, ai_name, provider, model_id,
+                        vote_direction, confidence_pct, reasoning_summary,
+                        outcome_status, outcome_net_return_pct
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0.0)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        analysis_id,
+                        now_iso,
+                        norm_ticker,
+                        str(v.get("slot_id", "AI_1")),
+                        str(v.get("ai_name", "AI Panelist")),
+                        str(v.get("provider", "gemini")),
+                        str(v.get("model_id", config.GEMINI_MODEL)),
+                        vote_dir,
+                        conf,
+                        str(v.get("reasoning_summary", "")),
+                    ),
+                )
+
+    def grade_ai_panel_votes_for_outcome(
+        self,
+        analysis_id: str,
+        evaluation_status: str,
+        net_return_pct: float,
+        actual_high: Optional[float],
+        actual_low: Optional[float],
+        entry_high: float,
+        take_profit_1: float,
+        stop_loss: float,
+    ) -> int:
+        """
+        Grades each of the 5 AIs' votes once the real market outcome is known:
+        - If price reached TP1 or net_return_pct >= 0.40%:
+          * BUY vote -> CORRECT_BUY_WIN
+          * WAIT vote -> MISSED_WAIT_OPPORTUNITY
+        - If price hit Stop Loss or net_return_pct <= -0.40% or actual_low <= stop_loss:
+          * BUY vote -> WRONG_BUY_LOSS
+          * WAIT vote -> CORRECT_WAIT_SAVED
+        - Otherwise -> NEUTRAL
+        """
+        with self.connect() as conn:
+            votes = conn.execute(
+                "SELECT * FROM ai_panel_votes WHERE analysis_id = ?",
+                (analysis_id,),
+            ).fetchall()
+            if not votes:
+                return 0
+
+            hit_tp = (
+                evaluation_status in ("RESOLVED_WIN_TP1", "RESOLVED_WIN_TP2")
+                or net_return_pct >= 0.40
+                or (actual_high is not None and actual_high >= take_profit_1 and (actual_low is None or actual_low > stop_loss))
+            )
+            hit_sl = (
+                evaluation_status == "RESOLVED_LOSS_SL"
+                or net_return_pct <= -0.40
+                or (actual_low is not None and actual_low <= stop_loss)
+            )
+
+            now_iso = now_wib_iso()
+            updated = 0
+            for v in votes:
+                v_dir = str(v["vote_direction"]).upper()
+                if hit_tp and not hit_sl:
+                    status = "CORRECT_BUY_WIN" if v_dir == "BUY" else "MISSED_WAIT_OPPORTUNITY"
+                elif hit_sl and not hit_tp:
+                    status = "WRONG_BUY_LOSS" if v_dir == "BUY" else "CORRECT_WAIT_SAVED"
+                else:
+                    if net_return_pct > 0.15:
+                        status = "CORRECT_BUY_WIN" if v_dir == "BUY" else "NEUTRAL"
+                    elif net_return_pct < -0.15:
+                        status = "WRONG_BUY_LOSS" if v_dir == "BUY" else "CORRECT_WAIT_SAVED"
+                    else:
+                        status = "NEUTRAL"
+
+                conn.execute(
+                    """
+                    UPDATE ai_panel_votes
+                    SET outcome_status = ?, outcome_net_return_pct = ?, evaluated_at_wib = ?
+                    WHERE vote_id = ?
+                    """,
+                    (status, round(net_return_pct, 4), now_iso, v["vote_id"]),
+                )
+                updated += 1
+            return updated

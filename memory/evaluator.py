@@ -381,7 +381,27 @@ class OutcomeEvaluator:
                 "SELECT * FROM prediction_outcomes WHERE analysis_id = ?",
                 (analysis_id,),
             ).fetchone()
-            return dict(row)
+            ah = conn.execute(
+                "SELECT entry_high, take_profit_1, stop_loss FROM analysis_history WHERE analysis_id = ?",
+                (analysis_id,),
+            ).fetchone()
+            res = dict(row)
+
+        if ah:
+            try:
+                self.db.grade_ai_panel_votes_for_outcome(
+                    analysis_id=analysis_id,
+                    evaluation_status=evaluation_status,
+                    net_return_pct=net_return_pct,
+                    actual_high=actual_high,
+                    actual_low=actual_low,
+                    entry_high=float(ah["entry_high"]),
+                    take_profit_1=float(ah["take_profit_1"]),
+                    stop_loss=float(ah["stop_loss"]),
+                )
+            except Exception:
+                pass
+        return res
 
     def evaluate_pending_predictions(self) -> list[dict[str, Any]]:
         """

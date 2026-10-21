@@ -1,4 +1,6 @@
+from datetime import datetime
 import sys
+import pytz
 import requests
 import config
 from agents.team import (
@@ -8,6 +10,8 @@ from agents.team import (
     generate_morning_dsu_report,
     get_performance_dashboard_report,
     get_ticker_memory_report,
+    get_weekly_ai_report,
+    swap_panel_ai_model,
 )
 from memory.learning_loop import LearningLoopOrchestrator
 
@@ -63,6 +67,11 @@ def process_pending_telegram_messages():
                 send_telegram_direct(analyze_single_stock_with_team(ticker), chat_id)
             elif text.startswith("/evaluasi") or text.startswith("/performa"):
                 send_telegram_direct(get_performance_dashboard_report(), chat_id)
+            elif text.startswith("/rapor_ai") or text.startswith("/panel_ai"):
+                send_telegram_direct(get_weekly_ai_report(), chat_id)
+            elif text.startswith("/ganti_ai"):
+                parts = text.split()
+                send_telegram_direct(swap_panel_ai_model(parts[1:]), chat_id)
             elif text.startswith("/memori"):
                 parts = text.split()
                 ticker = parts[1] if len(parts) > 1 else "TLKM"
@@ -87,7 +96,7 @@ def main():
     # 2. Proses bila ada chat tertunda dari Bos di Telegram
     process_pending_telegram_messages()
 
-    # 3. Jalankan mode jadwal cron (dsu / scan / close)
+    # 3. Jalankan mode jadwal cron (dsu / scan / close / weekly_ai)
     mode = sys.argv[1].lower() if len(sys.argv) > 1 else "dsu"
     if mode == "dsu":
         report = generate_morning_dsu_report()
@@ -100,6 +109,12 @@ def main():
         perf_report = get_performance_dashboard_report()
         header = "🔔 *LAPORAN PENUTUPAN PASAR SORE & SELF-LEARNING AI*\n"
         send_telegram_direct(header + report + "\n\n" + perf_report)
+        # Jika hari Jumat (weekday == 4), otomatis kirim Rapor Mingguan 5 AI!
+        now_wib = datetime.now(pytz.timezone(config.TIMEZONE))
+        if now_wib.weekday() == 4:
+            send_telegram_direct(get_weekly_ai_report())
+    elif mode == "weekly_ai":
+        send_telegram_direct(get_weekly_ai_report())
 
 
 if __name__ == "__main__":

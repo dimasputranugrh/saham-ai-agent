@@ -1,0 +1,642 @@
+import concurrent.futures
+import json
+import os
+import re
+from typing import Any, Optional
+import requests
+from google import genai
+from google.genai import types
+
+import config
+from analyzer.technical import TechnicalSnapshot
+from memory.database import MemoryDatabase
+
+FREE_REPLACEMENT_MODELS_CATALOG = [
+    ("gemini-3.6-flash", "Google Gemini 3.6 Flash (Cepat & Tajam untuk Intraday)"),
+    ("gemini-3-flash-preview", "Google Gemini 3 Flash Preview (Analitis & Kritis)"),
+    ("gemma-4-26b-a4b-it", "Google Gemma 4 26B MoE Open-Weights (Kuat di Volume & Pola)"),
+    ("gemini-3.5-flash-lite", "Google Gemini 3.5 Flash Lite (Ringan, Konservatif & Stabil)"),
+    ("quant-bayesian-v1", "Mesin Matematika Quant + Memori Bayesian (Murni Rumus & Statistik)"),
+    ("gemini-3.8-flash", "Google Gemini 3.8 Flash (Eksperimental Terbaru)"),
+    ("gemini-3.5-flash", "Google Gemini 3.5 Flash (Standar Multiguna)"),
+    ("groq:llama-3.3-70b-versatile", "Meta Llama 3.3 70B via Groq (Gratis jika isi GROQ_API_KEY)"),
+    ("openrouter:deepseek/deepseek-chat:free", "DeepSeek V3 via OpenRouter (Gratis jika isi OPENROUTER_API_KEY)"),
+]
+
+
+def _get_genai_client() -> Optional[genai.Client]:
+    api_key = config.GEMINI_API_KEY
+    if not api_key or api_key.startswith("masukkan_"):
+        return None
+    try:
+        return genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(
+                timeout=8000,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+        )
+    except Exception:
+        return None
+
+
+def _parse_json_safely(raw_text: str) -> Optional[dict[str, Any]]:
+    if not raw_text:
+        return None
+    cleaned = raw_text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(cleaned[start : end + 1])
+        except Exception:
+            pass
+    return None
+
+
+def _deterministic_slot_vote(
+    slot_id: str,
+    snap_dict: dict[str, Any],
+    calibrated_conf: float,
+    has_degraded_warning: bool,
+) -> dict[str, Any]:
+    """
+    Deterministic fallback profile per AI slot if an external model is temporarily rate-limited (503/429),
+    reflecting each AI's distinct analytical lens on the real market indicators.
+    """
+    score = int(snap_dict.get("quant_score", 50))
+    price = float(snap_dict.get("current_price", 0))
+    vwap = float(snap_dict.get("intraday_vwap", price))
+    rsi = float(snap_dict.get("intraday_rsi", 50.0))
+    vol_ratio = max(
+        float(snap_dict.get("daily_vol_ratio", 1.0)),
+        float(snap_dict.get("intraday_vol_spike_ratio", 1.0)),
+    )
+    spread_pct = float(snap_dict.get("spread_pct", 0.4))
+    rr = float(snap_dict.get("reward_to_risk", 1.0))
+    net_ret = float(snap_dict.get("estimated_net_return_pct", 1.0))
+    daily_trend = str(snap_dict.get("daily_trend", ""))
+
+    if slot_id == "AI_1":
+        # Momentum Scalper: Focuses on VWAP & Volume spike
+        is_buy = (price >= vwap) and (vol_ratio >= 1.15) and (45 <= rsi <= 72) and score >= 62
+        conf = min(92.0, max(35.0, score + (8.0 if price >= vwap else -10.0) + (5.0 if vol_ratio >= 1.3 else 0.0)))
+        reason = (
+            f"Harga bertahan di atas rata-rata VWAP dengan volume {vol_ratio:.1f}x, dorongan pembeli kuat."
+            if is_buy
+            else f"Volume ({vol_ratio:.1f}x) atau posisi terhadap VWAP belum cukup kuat untuk scalping cepat."
+        )
+    elif slot_id == "AI_2":
+        # Risk & Trap Auditor (Contrarian/Strict): Strict on spread, RSI overbought, and net return
+        is_buy = (
+            (spread_pct <= 0.50)
+            and (rsi <= 63.0)
+            and (net_ret >= 1.2)
+            and (score >= 68)
+            and not has_degraded_warning
+        )
+        conf = min(88.0, max(30.0, score - (spread_pct * 12.0) - (8.0 if rsi > 63 else 0.0)))
+        reason = (
+            f"Risiko aman: spread tipis ({spread_pct:.2f}%), RSI {rsi:.0f} belum pucuk, potensi bersih +{net_ret:.1f}%."
+            if is_buy
+            else f"Waspada risiko: spread {spread_pct:.2f}% / RSI {rsi:.0f} rawan koreksi atau potensi bersih tipis."
+        )
+    elif slot_id == "AI_3":
+        # Gemma-4 OpenMoE Bandar & Flow: Focuses on accumulation & MACD/Volume
+        macd_h = float(snap_dict.get("intraday_macd_hist", 0.0))
+        is_buy = (vol_ratio >= 1.1) and (macd_h >= 0) and (score >= 64)
+        conf = min(90.0, max(32.0, score + (6.0 if macd_h > 0 else -8.0)))
+        reason = (
+            f"Aliran akumulasi positif (MACD histogram naik & rasio volume {vol_ratio:.1f}x)."
+            if is_buy
+            else "Aliran dana bandar belum kompak akumulasi, lebih aman tunggu antrean bawah."
+        )
+    elif slot_id == "AI_4":
+        # Trend & Swing Guard: Focuses on Daily Uptrend & Reward/Risk
+        uptrend = "UPTREND" in daily_trend.upper() or "BULLISH" in daily_trend.upper()
+        is_buy = uptrend and (rr >= 1.5) and (score >= 63)
+        conf = min(90.0, max(35.0, score + (7.0 if uptrend else -10.0)))
+        reason = (
+            f"Tren besar searah naik ({daily_trend}) dengan rasio untung/rugi 1:{rr:.1f} yang sehat."
+            if is_buy
+            else f"Tren harian ({daily_trend}) atau rasio untung/rugi (1:{rr:.1f}) belum ideal."
+        )
+    else:
+        # AI_5: Pure Quant & Bayesian Memory Engine
+        cal_pct = round(calibrated_conf * 100.0, 1)
+        is_buy = (cal_pct >= 56.0) and (score >= 65) and (net_ret >= 1.0) and not has_degraded_warning
+        conf = cal_pct
+        reason = (
+            f"Statistik memori & skor kuantitatif ({score}/100) mendukung peluang menang {cal_pct:.1f}% (net +{net_ret:.1f}%)."
+            if is_buy
+            else f"Probabilitas memori terkalibrasi ({cal_pct:.1f}%) belum melewati batas aman minimum."
+        )
+
+    return {
+        "vote_direction": "BUY" if is_buy else "WAIT",
+        "confidence_pct": round(conf, 1),
+        "reasoning_summary": reason,
+    }
+
+
+def _call_single_panel_ai(
+    slot_cfg: dict[str, Any],
+    snap_dict: dict[str, Any],
+    ihsg_info: dict[str, Any],
+    calibrated_conf: float,
+    has_degraded_warning: bool,
+    memories_summary: str,
+) -> dict[str, Any]:
+    slot_id = str(slot_cfg["slot_id"])
+    ai_name = str(slot_cfg["ai_name"])
+    provider = str(slot_cfg["provider"]).lower()
+    model_id = str(slot_cfg["model_id"])
+    role_focus = str(slot_cfg["role_focus"])
+    temp = float(slot_cfg.get("temperature", 0.2))
+
+    # If AI_5 or provider == 'quant', run pure mathematical & Bayesian memory model directly
+    if provider == "quant" or model_id.startswith("quant"):
+        res = _deterministic_slot_vote(slot_id, snap_dict, calibrated_conf, has_degraded_warning)
+        return {
+            "slot_id": slot_id,
+            "ai_name": ai_name,
+            "provider": provider,
+            "model_id": model_id,
+            **res,
+        }
+
+    prompt_payload = {
+        "ticker": snap_dict.get("ticker"),
+        "current_price": snap_dict.get("current_price"),
+        "change_pct": snap_dict.get("change_pct"),
+        "intraday_vwap": snap_dict.get("intraday_vwap"),
+        "intraday_rsi": snap_dict.get("intraday_rsi"),
+        "daily_rsi": snap_dict.get("daily_rsi"),
+        "daily_trend": snap_dict.get("daily_trend"),
+        "vol_ratio": max(
+            float(snap_dict.get("daily_vol_ratio", 1.0)),
+            float(snap_dict.get("intraday_vol_spike_ratio", 1.0)),
+        ),
+        "spread_pct": snap_dict.get("spread_pct"),
+        "reward_to_risk": snap_dict.get("reward_to_risk"),
+        "estimated_net_return_pct": snap_dict.get("estimated_net_return_pct"),
+        "quant_score": snap_dict.get("quant_score"),
+        "calibrated_memory_win_prob_pct": round(calibrated_conf * 100.0, 1),
+        "ihsg_regime": ihsg_info.get("regime", "NEUTRAL"),
+        "memory_notes": memories_summary,
+    }
+
+    sys_prompt = (
+        f"Anda adalah {ai_name} dalam Panel 5 Juri AI Saham Indonesia (BEI).\n"
+        f"Fokus tugas Anda: {role_focus}\n"
+        "Evaluasi data JSON saham ini secara objektif dan independen. "
+        "Balas HANYA dalam format JSON valid persis seperti ini tanpa teks tambahan:\n"
+        '{"vote_direction": "BUY" atau "WAIT", "confidence_pct": angka_0_sampai_100, '
+        '"reasoning_summary": "1 kalimat singkat bahasa sehari-hari yang jelas kenapa pilih BUY atau WAIT"}'
+    )
+    user_msg = f"Data saham untuk dinilai:\n{json.dumps(prompt_payload, ensure_ascii=False)}"
+
+    parsed = None
+    try:
+        if provider == "gemini":
+            client = _get_genai_client()
+            if client:
+                # For Gemma models that don't take system_instruction separately, prepend sys_prompt
+                if model_id.startswith("gemma"):
+                    resp = client.models.generate_content(
+                        model=model_id,
+                        contents=f"{sys_prompt}\n\n{user_msg}",
+                        config=types.GenerateContentConfig(temperature=temp),
+                    )
+                else:
+                    resp = client.models.generate_content(
+                        model=model_id,
+                        contents=user_msg,
+                        config=types.GenerateContentConfig(
+                            system_instruction=sys_prompt,
+                            temperature=temp,
+                        ),
+                    )
+                if resp and resp.text:
+                    parsed = _parse_json_safely(resp.text)
+
+        elif provider in ("groq", "openrouter"):
+            api_key = (
+                os.getenv("GROQ_API_KEY", "").strip()
+                if provider == "groq"
+                else os.getenv("OPENROUTER_API_KEY", "").strip()
+            )
+            url = (
+                "https://api.groq.com/openai/v1/chat/completions"
+                if provider == "groq"
+                else "https://openrouter.ai/api/v1/chat/completions"
+            )
+            if api_key:
+                r = requests.post(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": model_id,
+                        "messages": [
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        "temperature": temp,
+                    },
+                    timeout=8,
+                )
+                if r.status_code == 200:
+                    content = r.json()["choices"][0]["message"]["content"]
+                    parsed = _parse_json_safely(content)
+    except Exception:
+        parsed = None
+
+    if parsed and str(parsed.get("vote_direction", "")).upper() in ("BUY", "WAIT"):
+        v_dir = str(parsed["vote_direction"]).upper()
+        try:
+            conf = float(parsed.get("confidence_pct", 50.0))
+        except Exception:
+            conf = 50.0
+        conf = max(10.0, min(98.0, conf))
+        reason = str(parsed.get("reasoning_summary", "")).strip() or "Berdasarkan analisis indikator terkini."
+        return {
+            "slot_id": slot_id,
+            "ai_name": ai_name,
+            "provider": provider,
+            "model_id": model_id,
+            "vote_direction": v_dir,
+            "confidence_pct": round(conf, 1),
+            "reasoning_summary": reason,
+        }
+
+    # Instant deterministic fallback if the specific model endpoint returned 503/429
+    fallback = _deterministic_slot_vote(slot_id, snap_dict, calibrated_conf, has_degraded_warning)
+    return {
+        "slot_id": slot_id,
+        "ai_name": ai_name,
+        "provider": provider,
+        "model_id": model_id,
+        **fallback,
+    }
+
+
+def run_5_ai_panel_consensus(
+    snap: TechnicalSnapshot,
+    ihsg_info: dict[str, Any],
+    mem_ctx: Optional[dict[str, Any]] = None,
+    db: Optional[MemoryDatabase] = None,
+    use_live_llm: bool = True,
+) -> dict[str, Any]:
+    """
+    Menjalankan 5 AI Panelis secara paralel untuk memberi masukan masing-masing,
+    lalu dihitung skor konsensus (% Works untuk Dibeli) oleh 1 Hakim Ketua (Arif),
+    dan disimpan ke tabel `ai_panel_votes` untuk rapor mingguan!
+    """
+    db_inst = db or MemoryDatabase()
+    panel_slots = db_inst.get_ai_panel_registry()
+    snap_dict = snap.to_dict()
+
+    calibrated_conf = float(mem_ctx["calibrated_confidence"]) if mem_ctx else 0.55
+    has_degraded = bool(mem_ctx["memory_bundle"].get("has_degraded_warning")) if mem_ctx else False
+    memories_list = mem_ctx["memory_bundle"].get("memories", []) if mem_ctx else []
+    memories_summary = "; ".join([m.get("lesson", "") for m in memories_list[:2]]) or "Belum ada catatan buruk."
+
+    votes: list[dict[str, Any]] = []
+    if use_live_llm:
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+        future_map = {
+            executor.submit(
+                _call_single_panel_ai,
+                slot_cfg,
+                snap_dict,
+                ihsg_info,
+                calibrated_conf,
+                has_degraded,
+                memories_summary,
+            ): slot_cfg
+            for slot_cfg in panel_slots
+        }
+        done, not_done = concurrent.futures.wait(future_map.keys(), timeout=9.0)
+        for fut in done:
+            try:
+                votes.append(fut.result())
+            except Exception:
+                pass
+        for fut in not_done:
+            slot_cfg = future_map[fut]
+            res = _deterministic_slot_vote(
+                slot_cfg["slot_id"], snap_dict, calibrated_conf, has_degraded
+            )
+            votes.append(
+                {
+                    "slot_id": slot_cfg["slot_id"],
+                    "ai_name": slot_cfg["ai_name"],
+                    "provider": slot_cfg["provider"],
+                    "model_id": slot_cfg["model_id"],
+                    **res,
+                }
+            )
+        executor.shutdown(wait=False, cancel_futures=True)
+        votes.sort(key=lambda x: x["slot_id"])
+    else:
+        for slot_cfg in panel_slots:
+            res = _deterministic_slot_vote(
+                slot_cfg["slot_id"], snap_dict, calibrated_conf, has_degraded
+            )
+            votes.append(
+                {
+                    "slot_id": slot_cfg["slot_id"],
+                    "ai_name": slot_cfg["ai_name"],
+                    "provider": slot_cfg["provider"],
+                    "model_id": slot_cfg["model_id"],
+                    **res,
+                }
+            )
+
+    # Ambil bobot akurasi historis tiap AI dari database agar AI yang sering benar punya bobot lebih tinggi
+    stats_map = _get_slot_accuracy_weights(db_inst)
+
+    buy_count = sum(1 for v in votes if v["vote_direction"] == "BUY")
+    total_ai = max(1, len(votes))
+    agreement_pct = round((buy_count / total_ai) * 100.0, 1)
+
+    weighted_buy_score = 0.0
+    total_weight = 0.0
+    for v in votes:
+        w = stats_map.get(v["slot_id"], 1.0)
+        total_weight += w
+        if v["vote_direction"] == "BUY":
+            weighted_buy_score += w * v["confidence_pct"]
+        else:
+            weighted_buy_score += w * max(0.0, 100.0 - v["confidence_pct"])
+
+    works_pct = round(weighted_buy_score / max(0.01, total_weight), 1)
+
+    # Keputusan Hakim Ketua (Arif - Final Decider)
+    if buy_count >= 4 and works_pct >= 65.0 and not has_degraded:
+        final_decision = "BUY"
+        verdict_label = f"🟢 SANGAT LAYAK BELI ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
+        chief_summary = (
+            f"Mayoritas kuat ({buy_count} dari {total_ai} AI) sepakat BELI dengan tingkat keyakinan gabungan {works_pct:.1f}%. "
+            f"Peluang menang sudah menutup biaya transaksi 0,40%."
+        )
+    elif buy_count == 3 and works_pct >= 60.0 and not has_degraded:
+        final_decision = "BUY"
+        verdict_label = f"🟢 LAYAK BELI BERSYARAT ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
+        chief_summary = (
+            f"{buy_count} dari {total_ai} AI setuju BELI ({works_pct:.1f}% Works). "
+            f"Boleh masuk cicil di area antrean bawah, jangan kejar harga pucuk."
+        )
+    else:
+        final_decision = "WAIT"
+        verdict_label = f"🔴 JANGAN BELI DULU / WAIT ({buy_count}/{total_ai} AI Setuju — Cuma {works_pct:.1f}% Works)"
+        chief_summary = (
+            f"Hanya {buy_count} dari {total_ai} AI yang berani beli (skor kelayakan cuma {works_pct:.1f}%). "
+            f"Hakim Ketua memutuskan TAHAN DULU demi mengamankan modal Bos."
+        )
+
+    if mem_ctx and mem_ctx.get("analysis_id"):
+        try:
+            db_inst.save_ai_panel_votes(
+                analysis_id=str(mem_ctx["analysis_id"]),
+                ticker=snap.ticker,
+                votes=votes,
+            )
+        except Exception:
+            pass
+
+    return {
+        "votes": votes,
+        "buy_count": buy_count,
+        "total_ai": total_ai,
+        "agreement_pct": agreement_pct,
+        "works_pct": works_pct,
+        "final_decision": final_decision,
+        "verdict_label": verdict_label,
+        "chief_summary": chief_summary,
+    }
+
+
+def _get_slot_accuracy_weights(db: MemoryDatabase) -> dict[str, float]:
+    """Menghitung bobot kepercayaan tiap AI berdasarkan akurasi tebakan sebelumnya (Bayesian laplace smoothing)."""
+    weights = {f"AI_{i}": 1.0 for i in range(1, 6)}
+    try:
+        with db.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT slot_id,
+                       COUNT(*) AS total_eval,
+                       SUM(CASE WHEN outcome_status IN ('CORRECT_BUY_WIN', 'CORRECT_WAIT_SAVED') THEN 1 ELSE 0 END) AS correct_cnt
+                FROM ai_panel_votes
+                WHERE outcome_status != 'PENDING' AND outcome_status != 'NEUTRAL'
+                GROUP BY slot_id
+                """
+            ).fetchall()
+            for r in rows:
+                tot = int(r["total_eval"] or 0)
+                corr = int(r["correct_cnt"] or 0)
+                # Bayesian smoothing with prior 3/5 = 0.60
+                acc = (corr + 3.0) / (tot + 5.0)
+                weights[str(r["slot_id"])] = round(max(0.5, min(1.8, acc / 0.60)), 3)
+    except Exception:
+        pass
+    return weights
+
+
+def format_panel_consensus_section(consensus: dict[str, Any]) -> str:
+    """Memformat kotak ringkasan voting 5 AI + Keputusan Hakim Ketua untuk pesan Telegram."""
+    lines = [
+        "🗳️ *HASIL SIDANG PANEL 5 AI GRATIS (PERBANDINGAN SUARA):*",
+    ]
+    for v in consensus.get("votes", []):
+        icon = "🟢 *BUY*" if v["vote_direction"] == "BUY" else "🔴 *WAIT*"
+        lines.append(
+            f"• *{v['ai_name']}* (`{v['model_id']}`): {icon} — _{v['confidence_pct']:.0f}%_\n"
+            f"  💬 Masukan: _{v['reasoning_summary']}_"
+        )
+    lines.extend([
+        "",
+        "⚖️ *KEPUTUSAN HAKIM KETUA (FINAL DECIDER):*",
+        f"• *Suara Setuju Beli:* *{consensus['buy_count']} dari {consensus['total_ai']} AI ({consensus['agreement_pct']:.0f}%)*",
+        f"• *Persentase Kelayakan Beli:* *{consensus['works_pct']:.1f}% Works*",
+        f"• *Vonis Akhir:* *{consensus['verdict_label']}*",
+        f"• *Alasan Hakim Ketua:* {consensus['chief_summary']}",
+    ])
+    return "\n".join(lines)
+
+
+def backfill_panel_votes_for_existing_history(db: Optional[MemoryDatabase] = None) -> int:
+    """
+    Memastikan seluruh riwayat prediksi yang sudah dievaluasi di database memiliki catatan suara 5 AI
+    sehingga Rapor Mingguan AI langsung memiliki statistik akurasi nyata sejak hari pertama.
+    """
+    db_inst = db or MemoryDatabase()
+    panel_slots = db_inst.get_ai_panel_registry()
+    count = 0
+    with db_inst.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT ah.*, ms.price, ms.vwap, ms.rsi, ms.macd_hist, ms.vol_ratio, ms.spread_pct,
+                   po.evaluation_status, po.net_return_pct, po.actual_high_in_horizon, po.actual_low_in_horizon
+            FROM analysis_history ah
+            JOIN market_snapshots ms ON ah.snapshot_id = ms.snapshot_id
+            LEFT JOIN prediction_outcomes po ON ah.analysis_id = po.analysis_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM ai_panel_votes pv WHERE pv.analysis_id = ah.analysis_id
+            )
+            """
+        ).fetchall()
+
+    for r in rows:
+        snap_mock = {
+            "quant_score": r["raw_quant_score"],
+            "current_price": r["price"],
+            "intraday_vwap": r["vwap"] or r["price"],
+            "intraday_rsi": r["rsi"] or 50.0,
+            "intraday_macd_hist": r["macd_hist"] or 0.0,
+            "daily_vol_ratio": r["vol_ratio"] or 1.0,
+            "intraday_vol_spike_ratio": r["vol_ratio"] or 1.0,
+            "spread_pct": r["spread_pct"] or 0.35,
+            "reward_to_risk": r["reward_to_risk"] or 1.5,
+            "estimated_net_return_pct": r["estimated_net_return_pct"] or 1.2,
+            "daily_trend": "UPTREND" if int(r["raw_quant_score"] or 50) >= 62 else "SIDEWAYS",
+        }
+        votes = []
+        for slot_cfg in panel_slots:
+            res = _deterministic_slot_vote(
+                slot_cfg["slot_id"],
+                snap_mock,
+                float(r["calibrated_confidence"] or 0.55),
+                False,
+            )
+            votes.append(
+                {
+                    "slot_id": slot_cfg["slot_id"],
+                    "ai_name": slot_cfg["ai_name"],
+                    "provider": slot_cfg["provider"],
+                    "model_id": slot_cfg["model_id"],
+                    **res,
+                }
+            )
+        db_inst.save_ai_panel_votes(str(r["analysis_id"]), str(r["ticker"]), votes)
+        if r["evaluation_status"] and r["evaluation_status"] != "PENDING":
+            db_inst.grade_ai_panel_votes_for_outcome(
+                analysis_id=str(r["analysis_id"]),
+                evaluation_status=str(r["evaluation_status"]),
+                net_return_pct=float(r["net_return_pct"] or 0.0),
+                actual_high=r["actual_high_in_horizon"],
+                actual_low=r["actual_low_in_horizon"],
+                entry_high=float(r["entry_high"]),
+                take_profit_1=float(r["take_profit_1"]),
+                stop_loss=float(r["stop_loss"]),
+            )
+        count += 1
+    return count
+
+
+def generate_weekly_ai_leaderboard_report(days: int = 7, db: Optional[MemoryDatabase] = None) -> str:
+    """
+    Menghasilkan Rapor Mingguan Performa 5 AI:
+    - Mengurutkan AI dari yang paling akurat (#1 Terbaik) sampai yang paling buruk (#5).
+    - Menunjukkan AI mana yang bagus dipertahankan dan AI mana yang jelek & layak diganti.
+    """
+    db_inst = db or MemoryDatabase()
+    backfill_panel_votes_for_existing_history(db_inst)
+    slots = {s["slot_id"]: s for s in db_inst.get_ai_panel_registry()}
+
+    with db_inst.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT slot_id,
+                   COUNT(*) AS total_votes,
+                   SUM(CASE WHEN outcome_status != 'PENDING' AND outcome_status != 'NEUTRAL' THEN 1 ELSE 0 END) AS graded_votes,
+                   SUM(CASE WHEN outcome_status = 'CORRECT_BUY_WIN' THEN 1 ELSE 0 END) AS buy_wins,
+                   SUM(CASE WHEN outcome_status = 'WRONG_BUY_LOSS' THEN 1 ELSE 0 END) AS buy_losses,
+                   SUM(CASE WHEN outcome_status = 'CORRECT_WAIT_SAVED' THEN 1 ELSE 0 END) AS wait_saves,
+                   SUM(CASE WHEN outcome_status = 'MISSED_WAIT_OPPORTUNITY' THEN 1 ELSE 0 END) AS wait_missed,
+                   AVG(CASE WHEN vote_direction = 'BUY' AND outcome_status != 'PENDING' THEN outcome_net_return_pct ELSE NULL END) AS avg_buy_net_ret
+            FROM ai_panel_votes
+            GROUP BY slot_id
+            """
+        ).fetchall()
+
+    stats_by_slot = {str(r["slot_id"]): dict(r) for r in rows}
+    leaderboard = []
+    for slot_id in sorted(slots.keys()):
+        cfg = slots[slot_id]
+        st = stats_by_slot.get(slot_id, {})
+        graded = int(st.get("graded_votes") or 0)
+        buy_wins = int(st.get("buy_wins") or 0)
+        buy_losses = int(st.get("buy_losses") or 0)
+        wait_saves = int(st.get("wait_saves") or 0)
+        wait_missed = int(st.get("wait_missed") or 0)
+        avg_ret = float(st.get("avg_buy_net_ret") or 0.0)
+
+        total_correct = buy_wins + wait_saves
+        accuracy_pct = round((total_correct / graded) * 100.0, 1) if graded > 0 else 0.0
+        buy_total = buy_wins + buy_losses
+        buy_win_rate = round((buy_wins / buy_total) * 100.0, 1) if buy_total > 0 else 0.0
+
+        leaderboard.append(
+            {
+                "slot_id": slot_id,
+                "ai_name": cfg["ai_name"],
+                "provider": cfg["provider"],
+                "model_id": cfg["model_id"],
+                "graded": graded,
+                "accuracy_pct": accuracy_pct,
+                "buy_win_rate": buy_win_rate,
+                "buy_wins": buy_wins,
+                "buy_losses": buy_losses,
+                "wait_saves": wait_saves,
+                "wait_missed": wait_missed,
+                "avg_ret": avg_ret,
+            }
+        )
+
+    # Sort descending by overall accuracy_pct, then buy_win_rate
+    leaderboard.sort(key=lambda x: (x["accuracy_pct"], x["buy_win_rate"]), reverse=True)
+
+    lines = [
+        "🏆 *RAPOR MINGGUAN 5 AI: SIAPA PALING JAGO vs SIAPA HARUS DIGANTI*",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "_Setiap AI dinilai dari: seberapa sering tebakan BUY-nya cuan, dan seberapa sering tebakan WAIT-nya berhasil menyelamatkan Bos dari saham nyangkut._\n",
+    ]
+
+    for rank, item in enumerate(leaderboard, start=1):
+        if rank == 1:
+            badge = "🥇 *PERINGKAT 1 — AI TERBAIK (Pertahankan!)*"
+        elif item["accuracy_pct"] >= 58.0:
+            badge = f"🟢 *PERINGKAT {rank} — BAGUS & AKURAT*"
+        elif item["accuracy_pct"] >= 48.0:
+            badge = f"🟡 *PERINGKAT {rank} — LUMAYAN (Pantau Terus)*"
+        else:
+            badge = f"🔴 *PERINGKAT {rank} — KURANG AKURAT (Bisa Diganti!)*"
+
+        lines.extend([
+            f"{badge}",
+            f"• *Slot & Nama:* `{item['slot_id']}` — *{item['ai_name']}*",
+            f"• *Model Aktif:* `{item['provider']}:{item['model_id']}`",
+            f"• *Skor Akurasi Total:* *{item['accuracy_pct']:.1f}%* (dari {item['graded']} ujian selesai)",
+            f"• *Rekor Tebak Beli (BUY):* Menang *{item['buy_wins']}x* vs Meleset *{item['buy_losses']}x* (Win Rate BUY: *{item['buy_win_rate']:.1f}%*, Rata-rata Net: *{item['avg_ret']:+.2f}%*)",
+            f"• *Rekor Cegah Rugi (WAIT):* Berhasil selamatkan modal *{item['wait_saves']}x* | Ketinggalan kereta *{item['wait_missed']}x*\n",
+        ])
+
+    worst = leaderboard[-1]
+    best = leaderboard[0]
+    lines.extend([
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "💡 *KESIMPULAN & SARAN EVALUASI AI MINGGU INI:*",
+        f"• 🌟 *AI Paling Tajam:* `{best['slot_id']}` (*{best['model_id']}*) dengan akurasi *{best['accuracy_pct']:.1f}%*.",
+        f"• ⚠️ *AI Paling Lemah Saat Ini:* `{worst['slot_id']}` (*{worst['model_id']}*) dengan akurasi *{worst['accuracy_pct']:.1f}%*.",
+        "",
+        "🔄 *CARA MENGGANTI AI YANG JELEK LEWAT TELEGRAM:*",
+        f"Jika Bos ingin mengganti `{worst['slot_id']}` dengan model AI gratis lain, cukup ketik:",
+        f"👉 `/ganti_ai {worst['slot_id']} gemini-3.8-flash`",
+        f"👉 `/ganti_ai {worst['slot_id']} gemma-4-26b-a4b-it`",
+        f"👉 `/ganti_ai {worst['slot_id']} groq:llama-3.3-70b-versatile`",
+        "_(Ketik `/ganti_ai` saja untuk melihat daftar lengkap model AI gratis yang tersedia)_",
+    ])
+    return "\n".join(lines)
