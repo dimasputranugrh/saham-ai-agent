@@ -13,13 +13,15 @@ from memory.database import MemoryDatabase
 
 FREE_REPLACEMENT_MODELS_CATALOG = [
     ("gemini-3.6-flash", "Google Gemini 3.6 Flash (Cepat & Tajam untuk Intraday)"),
-    ("gemini-3-flash-preview", "Google Gemini 3 Flash Preview (Analitis & Kritis)"),
+    ("groq:openai/gpt-oss-120b", "OpenAI GPT-OSS 120B via Groq (Model Raksasa 120 Miliar Parameter - Gratis)"),
+    ("groq:qwen/qwen3.8-27b", "Alibaba Qwen 3.8 27B via Groq (Kuat di Matematika & Tren Asia - Gratis)"),
     ("gemma-4-26b-a4b-it", "Google Gemma 4 26B MoE Open-Weights (Kuat di Volume & Pola)"),
-    ("gemini-3.5-flash-lite", "Google Gemini 3.5 Flash Lite (Ringan, Konservatif & Stabil)"),
     ("quant-bayesian-v1", "Mesin Matematika Quant + Memori Bayesian (Murni Rumus & Statistik)"),
-    ("gemini-3.8-flash", "Google Gemini 3.8 Flash (Eksperimental Terbaru)"),
-    ("gemini-3.5-flash", "Google Gemini 3.5 Flash (Standar Multiguna)"),
-    ("groq:llama-3.3-70b-versatile", "Meta Llama 3.3 70B via Groq (Gratis jika isi GROQ_API_KEY)"),
+    ("gemini-3-flash-preview", "Google Gemini 3 Flash Preview (Analitis & Kritis)"),
+    ("gemini-3.5-flash-lite", "Google Gemini 3.5 Flash Lite (Ringan, Konservatif & Stabil)"),
+    ("groq:openai/gpt-oss-20b", "OpenAI GPT-OSS 20B via Groq (Super Cepat & Ringan - Gratis)"),
+    ("cerebras:llama-3.3-70b", "Meta Llama 3.3 70B via Cerebras (Gratis jika isi CEREBRAS_API_KEY)"),
+    ("mistral:mistral-small-latest", "Mistral Small 3.1 via Mistral AI (Gratis jika isi MISTRAL_API_KEY)"),
     ("openrouter:deepseek/deepseek-chat:free", "DeepSeek V3 via OpenRouter (Gratis jika isi OPENROUTER_API_KEY)"),
 ]
 
@@ -222,18 +224,22 @@ def _call_single_panel_ai(
                 if resp and resp.text:
                     parsed = _parse_json_safely(resp.text)
 
-        elif provider in ("groq", "openrouter"):
-            api_key = (
-                os.getenv("GROQ_API_KEY", "").strip()
-                if provider == "groq"
-                else os.getenv("OPENROUTER_API_KEY", "").strip()
-            )
-            url = (
-                "https://api.groq.com/openai/v1/chat/completions"
-                if provider == "groq"
-                else "https://openrouter.ai/api/v1/chat/completions"
-            )
-            if api_key:
+        elif provider in ("groq", "openrouter", "cerebras", "mistral"):
+            key_map = {
+                "groq": os.getenv("GROQ_API_KEY", "").strip(),
+                "openrouter": os.getenv("OPENROUTER_API_KEY", "").strip(),
+                "cerebras": os.getenv("CEREBRAS_API_KEY", "").strip(),
+                "mistral": os.getenv("MISTRAL_API_KEY", "").strip(),
+            }
+            url_map = {
+                "groq": "https://api.groq.com/openai/v1/chat/completions",
+                "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+                "cerebras": "https://api.cerebras.ai/v1/chat/completions",
+                "mistral": "https://api.mistral.ai/v1/chat/completions",
+            }
+            api_key = key_map.get(provider, "")
+            url = url_map.get(provider, "")
+            if api_key and url:
                 r = requests.post(
                     url,
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
