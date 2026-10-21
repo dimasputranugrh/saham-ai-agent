@@ -87,21 +87,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⌨️ *Perintah yang Tersedia:*\n"
         "• `/dsu` — Panggil rapat DSU pagi sekarang juga\n"
         "• `/scan` — Cari saham yang bagus dibeli *jam segini*\n"
-        "• `/cek <KODE>` — Bedah 1 saham (contoh: `/cek BBCA` atau `/cek ANTM`)\n"
-        "• `/beli <KODE> <HARGA>` — Lapor kalau Bos sudah beli (contoh: `/beli BBCA 5250`) biar diingatkan kapan jual!\n"
+        "• `/berita` — Radar perbandingan berita 7 sektor & peluang Masa Depan (Swing)\n"
+        "• `/cek <KODE>` — Bedah 1 saham + Voting 5 AI (contoh: `/cek BBCA`)\n"
+        "• `/beli <KODE> <HARGA>` — Lapor kalau Bos sudah beli biar diingatkan kapan jual!\n"
         "• `/pegang` — Cek saham yang sedang Bos pegang: sudah waktunya jual atau belum\n"
         "• `/jual <KODE>` — Hapus saham dari pantauan jual kalau sudah laku\n"
-        "• `/sb_beli <KODE> <LOT> <HARGA>` — Eksekusi Beli otomatis di Stockbit (contoh: `/sb_beli BBCA 1 5250`)\n"
-        "• `/sb_jual <KODE> <LOT> <HARGA>` — Eksekusi Jual otomatis di Stockbit (contoh: `/sb_jual BBCA 1 5450`)\n"
-        "• `/sb_saldo` — Potret Portofolio & Saldo RDN Stockbit Anda sekarang\n"
         "• `/evaluasi` — Lihat rapor akurasi, Win Rate, Expectancy, & Self-Learning AI\n"
         "• `/rapor_ai` — Rapor Mingguan 5 AI (Siapa paling jago vs Siapa harus diganti)\n"
         "• `/ganti_ai` — Ganti AI yang kurang akurat dengan model AI gratis lain\n"
         "• `/agy <pertanyaan>` — Tanya Antigravity Architect tentang kode/project ini\n"
         "• `/upgrade <instruksi>` — Perintahkan AI meng-upgrade kode project & push ke GitHub\n"
         "• `/memori <KODE>` — Lihat ingatan & pelajaran historis AI pada saham tertentu\n"
-        "• `/watchlist` — Lihat / tambah / hapus daftar saham pantauan\n\n"
-        "💬 _Silakan langsung coba ketik `/cek BBCA` atau `/rapor_ai` sekarang!_"
+        "• `/watchlist` — Lihat / tambah / hapus daftar saham pantauan\n"
+        "• `/help` atau `/menu` — Tampilkan daftar perintah ini kapan saja\n\n"
+        "💬 _Atau langsung ketik pertanyaan biasa tanpa garis miring `/`, nanti Tim AI langsung menjawab!_"
     )
     await _send_safe_markdown(update.message, welcome)
 
@@ -513,6 +512,8 @@ def start_telegram_bot():
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_start))
+    app.add_handler(CommandHandler("menu", cmd_start))
+    app.add_handler(CommandHandler("bantuan", cmd_start))
     app.add_handler(CommandHandler("dsu", cmd_dsu))
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CommandHandler("berita", cmd_berita))

@@ -58,7 +58,27 @@ def process_pending_telegram_messages():
             if not text or not chat_id:
                 continue
 
-            if text.startswith("/dsu"):
+            if text.startswith("/start") or text.startswith("/help") or text.startswith("/menu") or text.startswith("/bantuan"):
+                help_msg = (
+                    "👔 *DAFTAR PERINTAH TIM KARYAWAN AI SAHAM*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "• `/cek <KODE>` — Bedah 1 saham + Voting 5 AI (contoh: `/cek BBCA`)\n"
+                    "• `/scan` — Cari saham bagus buat dibeli jam ini\n"
+                    "• `/berita` — Radar perbandingan berita 7 sektor & peluang Masa Depan\n"
+                    "• `/dsu` — Laporan rapat pagi lengkap\n"
+                    "• `/rapor_ai` — Rapor Mingguan 5 AI (Urutan AI terbaik vs terburuk)\n"
+                    "• `/ganti_ai` — Ganti AI yang kurang akurat dengan AI gratis lain\n"
+                    "• `/evaluasi` — Rapor akurasi, Win Rate, & Self-Learning strategi\n"
+                    "• `/memori <KODE>` — Lihat ingatan database pada saham tertentu\n"
+                    "• `/agy <pertanyaan>` — Tanya AI Architect tentang kode project ini\n"
+                    "• `/upgrade <instruksi>` — Suruh AI meng-upgrade kode project & push ke GitHub\n"
+                    "• `/beli <KODE> <HARGA>` — Catat saham yang dibeli agar dipantau jam jualnya\n"
+                    "• `/pegang` — Cek apakah saham yang dipegang sudah waktunya jual\n"
+                    "• `/watchlist` — Lihat / ubah daftar saham pantauan\n\n"
+                    "💬 _Atau langsung ketik pertanyaan biasa tanpa garis miring `/`, nanti Tim AI langsung menjawab!_"
+                )
+                send_telegram_direct(help_msg, chat_id)
+            elif text.startswith("/dsu"):
                 send_telegram_direct(generate_morning_dsu_report(), chat_id)
             elif text.startswith("/scan"):
                 _, rep = generate_intraday_scanner_alert(0)
