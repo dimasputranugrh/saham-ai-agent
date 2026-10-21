@@ -3,3 +3,9 @@ __pycache__/
 *.py[cod]
 .env
 .DS_Store
+data/stockbit_profile/
+data/*.png
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/backups/

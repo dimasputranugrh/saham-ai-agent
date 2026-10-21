@@ -7,6 +7,8 @@ from google.genai import types
 import config
 from analyzer.technical import TechnicalSnapshot, get_ihsg_overview, scan_watchlist_quant, analyze_ticker_quant
 from analyzer.news import fetch_market_news_indonesia, fetch_ticker_news
+from memory.learning_loop import LearningLoopOrchestrator
+from memory.performance import PerformanceAnalyzer
 
 
 def _get_gemini_client():
@@ -72,6 +74,13 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
     4. Arif (Kepala Riset / Lead Trader - Kesimpulan Saham Pilihan Hari Ini)
     """
     watchlist = tickers or config.load_watchlist()
+    orchestrator = LearningLoopOrchestrator()
+    # Jalankan evaluasi atas prediksi sebelumnya yang sudah melewati horizon waktu
+    try:
+        orchestrator.run_evaluation_and_learning_cycle()
+    except Exception:
+        pass
+
     ihsg = get_ihsg_overview()
     snapshots = scan_watchlist_quant(watchlist)
     news_list = fetch_market_news_indonesia(max_items=6)
@@ -80,30 +89,58 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
     top_picks = snapshots[:4]
     avoid_list = [s for s in snapshots if s.quant_score < 48][:2]
 
+    # Rekam snapshot & prediksi awal ke database persistent memory + ambil memori relevan
+    enriched_picks = []
+    news_summary_str = "; ".join([n.get("title", "") for n in news_list[:3]])
+    for s in top_picks:
+        try:
+            ctx = orchestrator.analyze_and_record_with_memory(
+                ticker=s.ticker,
+                snap=s,
+                ihsg_info=ihsg,
+                news_context=news_summary_str,
+                timeframe="15m",
+                horizon_bars=8,
+                horizon_minutes=120,
+                execution_mode=config.EXECUTION_MODE,
+            )
+            if ctx:
+                d_snap = s.to_dict()
+                d_snap["final_direction"] = ctx["final_direction"]
+                d_snap["calibrated_confidence"] = ctx["calibrated_confidence"]
+                d_snap["confidence_basis"] = ctx["confidence_basis"]
+                d_snap["historical_memories"] = ctx["memory_bundle"]["memories"]
+                enriched_picks.append(d_snap)
+            else:
+                enriched_picks.append(s.to_dict())
+        except Exception:
+            enriched_picks.append(s.to_dict())
+
     if top_picks:
         prompt_data = {
             "waktu_rapat_wib": wib_now,
             "kondisi_ihsg": ihsg,
             "berita_pasar_hari_ini": news_list,
-            "top_kandidat_saham_kuantitatif": [s.to_dict() for s in top_picks],
+            "top_kandidat_saham_kuantitatif_dan_memori": enriched_picks,
             "saham_rawan_koreksi": [s.to_dict() for s in avoid_list],
         }
         system_instruction = (
             "Anda adalah sistem 4 Karyawan AI pribadi yang melapor ke Bos (pemula yang tidak mengerti istilah rumit saham).\n"
-            "meskipun di belakang layar Anda memakai perhitungan matematika canggih (VWAP, RSI, MACD, ATR), "
+            "meskipun di belakang layar Anda memakai perhitungan matematika canggih (VWAP, RSI, MACD, ATR) dan Database Memori Historis, "
             "SAAT MELAPOR KE BOS GUNAKAN 'BAHASA BAYI' / BAHASA SEHARI-HARI YANG SUPER GAMPANG DIPAHAMI ANAK KECIL!\n\n"
             "Peran 4 Karyawan AI:\n"
-            "1. 👨‍💻 *Budi (Si Pemantau Grafik & Bandar)*: Jelaskan pakai analogi sederhana (misal: 'saham ini lagi ramai diborong orang besar', 'harganya lagi diskon kekecilan siap mantul', atau 'lagi mahal jangan dikejar dulu'). Jangan pakai istilah teknis tanpa diterjemahkan ke bahasa bayi.\n"
+            "1. 👨‍💻 *Budi (Si Pemantau Grafik & Bandar)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan juga bukti pendukung dan bukti penentang (risiko spread/volume), serta pengalaman dari `historical_memories` jika ada.\n"
             "2. 👩‍💼 *Sari (Si Pemantau Berita)*: Ceritakan singkat ada kabar baik/buruk apa hari ini yang bikin harga saham bisa naik/turun.\n"
             "3. 🛡️ *Hendra (Si Penjaga Dompet Bos)*: Kasih panduan super jelas:\n"
             "   - 🛒 *Beli di Harga Berapa:* (pakai angka `entry_low` - `entry_high`)\n"
-            "   - 💰 *Jual Ambil Untung (Cuan) di Harga Berapa:* (pakai angka `take_profit_1` dan `take_profit_2`)\n"
-            "   - 🛑 *Rem Darurat (Jual Rugi kalau turun ke):* (pakai angka `stop_loss` supaya uang Bos nggak nyangkut)\n"
-            "   - ⏰ *Jam Berapa Harus Beli & Jam Berapa Harus Jual:* (gunakan `best_execution_window` untuk jam beli dan `best_sell_window` untuk kapan/jam berapa harus jual)\n"
-            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih 1 perintah paling jelas hari ini: saham apa nomor 1 yang harus dibeli, jam berapa belinya, dan kapan/jam berapa jualnya.\n\n"
+            "   - 💰 *Jual Ambil Untung (Cuan) di Harga Berapa:* (pakai angka `take_profit_1` dan `take_profit_2` beserta estimasi return bersih setelah fee)\n"
+            "   - 🛑 *Rem Darurat / Pembatal Sinyal:* (pakai angka `stop_loss` dan `invalidation_conditions`)\n"
+            "   - 🎯 *Tingkat Keyakinan Terkalibrasi:* (gunakan `calibrated_confidence` & `confidence_basis`)\n"
+            "   - ⏰ *Jam Berapa Harus Beli & Jam Berapa Harus Jual:* (gunakan `best_execution_window` dan `best_sell_window`)\n"
+            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih keputusan tegas (`BUY` atau `WAIT` jika peluang/data belum cukup).\n\n"
             "ATURAN KERAS:\n"
             "- DILARANG MENGARANG ANGKA HARGA! Gunakan 100% angka Rupiah dari JSON.\n"
-            "- Gunakan bahasa santai, akrab, pakai perumpamaan sehari-hari (diskon, borong, rem darurat, uang jajan), rapi untuk layar HP Telegram."
+            "- Pisahkan fakta data nyata, interpretasi, dan asumsi biaya transaksi."
         )
         ai_text = _generate_with_gemini(
             contents=f"Buat laporan DSU (Daily Standup Update) pagi untuk Bos berdasarkan data kuantitatif & berita berikut:\n{json.dumps(prompt_data, ensure_ascii=False)}",
@@ -192,22 +229,47 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
     news_items = fetch_ticker_news(norm_ticker, max_items=4)
     code = snap.ticker.replace(".JK", "")
 
+    orchestrator = LearningLoopOrchestrator()
+    try:
+        orchestrator.run_evaluation_and_learning_cycle()
+    except Exception:
+        pass
+
+    ihsg_info = get_ihsg_overview()
+    news_str = "; ".join([n.get("title", "") for n in news_items[:3]])
+    mem_ctx = orchestrator.analyze_and_record_with_memory(
+        ticker=norm_ticker,
+        snap=snap,
+        ihsg_info=ihsg_info,
+        news_context=news_str,
+        timeframe="15m",
+        horizon_bars=8,
+        horizon_minutes=120,
+        execution_mode=config.EXECUTION_MODE,
+    )
+
     payload = {
         "data_teknikal_kuantitatif": snap.to_dict(),
         "berita_emiten_terbaru": news_items,
+        "memori_pembelajaran_historis": mem_ctx["memory_bundle"] if mem_ctx else {},
+        "calibrated_confidence": mem_ctx["calibrated_confidence"] if mem_ctx else 0.5,
+        "confidence_basis": mem_ctx["confidence_basis"] if mem_ctx else "",
+        "final_direction_after_memory": mem_ctx["final_direction"] if mem_ctx else snap.direction,
     }
     sys_inst = (
         "Anda adalah tim 4 Karyawan AI saham pribadi untuk Bos yang pemula (tidak paham istilah rumit saham).\n"
-        "Jawab dengan 'BAHASA BAYI' (bahasa sehari-hari yang super simpel, pakai perumpamaan belanja/pasar).\n"
+        "Jawab dengan 'BAHASA BAYI' (bahasa sehari-hari yang super simpel, pakai perumpamaan belanja/pasar), "
+        "NAMUN tetap jujur memisahkan Fakta Data, Interpretasi, Asumsi Biaya, Bukti Pendukung vs Penentang, dan Pengalaman Memori Historis.\n"
         "Susunan Laporan:\n"
-        "1. 👨‍💻 *Budi (Pemantau Harga & Bandar)*: Jelaskan kondisi saham ini sekarang pakai bahasa bayi (apakah lagi ramai diborong pembeli besar, lagi diskon murah, atau lagi bahaya turun).\n"
-        "2. 👩‍💼 *Sari (Pemantau Gosip & Berita)*: Jelaskan berita terbaru saham ini dengan bahasa obrolan santai.\n"
+        "1. 👨‍💻 *Budi (Pemantau Harga, Bukti Pendukung vs Penentang, & Memori)*: Jelaskan fakta harga sekarang, bukti yang mendukung naik, bukti yang menentang/risiko (seperti spread atau posisi di bawah rata-rata), dan pelajaran dari `memori_pembelajaran_historis`.\n"
+        "2. 👩‍💼 *Sari (Pemantau Gosip & Berita)*: Jelaskan berita terbaru saham ini dan cuaca IHSG dengan bahasa obrolan santai.\n"
         "3. 🛡️ *Hendra (Penjaga Dompet Bos)*: Berikan contekan angka pasti dari JSON `data_teknikal_kuantitatif` (DILARANG MENGARANG ANGKA):\n"
-        "   - 💵 *Harga Sekarang:* `current_price`\n"
+        "   - 💵 *Harga Sekarang:* `current_price` (Waktu data: `last_bar_time`)\n"
         "   - 🛒 *Harga Beli (Cicil/Serok):* `entry_low` sampai `entry_high`\n"
-        "   - 💰 *Target Jual Untung (Ambil Cuan):* `take_profit_1` (target dekat) & `take_profit_2` (target agak jauh)\n"
-        "   - 🛑 *Rem Darurat (Wajib Jual kalau turun tembus):* `stop_loss` (jelaskan biar modal Bos aman nggak nyangkut)\n"
-        "4. 🎯 *Arif (Kesimpulan Jam Beli & Jam Jual)*: Tegas bilang ke Bos: **BELI SEKARANG**, **TUNGGU AGAK TURUN DIKIT**, atau **JANGAN DIBELI DULU**, beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
+        "   - 💰 *Target Jual Untung (Ambil Cuan):* `take_profit_1` & `take_profit_2` (Estimasi untung bersih setelah potongan biaya transaksi: `estimated_net_return_pct`%)\n"
+        "   - 🛑 *Rem Darurat & Pembatal Sinyal:* `stop_loss` (`invalidation_conditions`)\n"
+        "   - 🎯 *Tingkat Keyakinan Terkalibrasi:* `calibrated_confidence` (`confidence_basis`)\n"
+        "4. 🎯 *Arif (Kesimpulan Jam Beli & Jam Jual)*: Gunakan `final_direction_after_memory` (**BUY**, **WAIT**, atau **AVOID**) beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
     )
     ai_text = _generate_with_gemini(
         contents=f"Berikan laporan analisis 4 karyawan AI untuk saham {code}:\n{json.dumps(payload, ensure_ascii=False)}",
@@ -253,15 +315,22 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         f"• 🧱 *Support 1 / 2:* {_fmt_rp(snap.support_1, snap.is_idx)} / {_fmt_rp(snap.support_2, snap.is_idx)}",
         f"• 🚧 *Resistance 1 / 2:* {_fmt_rp(snap.resistance_1, snap.is_idx)} / {_fmt_rp(snap.resistance_2, snap.is_idx)}",
         f"• 🛒 *Area Beli (Entry):* *{_fmt_rp(snap.entry_low, snap.is_idx)} – {_fmt_rp(snap.entry_high, snap.is_idx)}*",
-        f"• 🎯 *Target Jual 1 (TP1):* *{_fmt_rp(snap.take_profit_1, snap.is_idx)}* (+{((snap.take_profit_1 - snap.entry_high)/snap.entry_high*100):.1f}%)",
+        f"• 🎯 *Target Jual 1 (TP1):* *{_fmt_rp(snap.take_profit_1, snap.is_idx)}* (Kotor: +{snap.estimated_gross_return_pct:.1f}%, Bersih setelah fee: *+{snap.estimated_net_return_pct:.1f}%*)",
         f"• 🚀 *Target Jual 2 (TP2):* *{_fmt_rp(snap.take_profit_2, snap.is_idx)}* (+{((snap.take_profit_2 - snap.entry_high)/snap.entry_high*100):.1f}%)",
-        f"• 🛑 *Batas Cut Loss (SL):* *< {_fmt_rp(snap.stop_loss, snap.is_idx)}* ({((snap.stop_loss - snap.entry_high)/snap.entry_high*100):.1f}%)",
-        f"• ⚖️ *Reward/Risk Ratio:* 1 : {snap.reward_to_risk}",
+        f"• 🛑 *Batas Cut Loss (SL):* *< {_fmt_rp(snap.stop_loss, snap.is_idx)}* (-{snap.estimated_risk_pct:.1f}%)",
+        f"• ⚖️ *Reward/Risk Ratio:* 1 : {snap.reward_to_risk} | *Spread 1 Tick:* {snap.spread_pct:.2f}%",
+        f"• 🎲 *Keyakinan Terkalibrasi:* {(mem_ctx['calibrated_confidence']*100 if mem_ctx else 50.0):.1f}% ({mem_ctx['confidence_basis'] if mem_ctx else 'Prior'})",
+        f"• ⚠️ *Pembatal Sinyal:* {snap.invalidation_conditions}",
         "",
         "🎯 *ARIF (Rekomendasi Jam Beli & Jam Jual):*",
+        f"• 📌 *Keputusan Akhir:* *{mem_ctx['final_direction'] if mem_ctx else snap.direction}*",
         f"• ⏰ *Jam Beli:* {snap.best_execution_window}",
         f"• 🔔 *Waktu/Jam Jual:* {snap.best_sell_window}",
     ])
+    if mem_ctx and mem_ctx["memory_bundle"]["memories"]:
+        lines.extend(["", "🧠 *MEMORI PEMBELAJARAN HISTORIS TERKAIT:*"])
+        for m in mem_ctx["memory_bundle"]["memories"][:2]:
+            lines.append(f"• [{m['validity_level']}] {m['lesson']}")
     return "\n".join(lines)
 
 
@@ -272,11 +341,32 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
     """
     threshold = min_score if min_score is not None else config.MIN_INTRADAY_ALERT_SCORE
     watchlist = config.load_watchlist()
+    orchestrator = LearningLoopOrchestrator()
+    try:
+        orchestrator.run_evaluation_and_learning_cycle()
+    except Exception:
+        pass
+
+    ihsg_info = get_ihsg_overview()
     snapshots = scan_watchlist_quant(watchlist)
     wib_now = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M WIB")
 
-    qualified = [s for s in snapshots if s.quant_score >= threshold]
+    qualified = [s for s in snapshots if s.quant_score >= threshold and s.direction == "BUY"]
     top_3 = qualified[:3] if qualified else snapshots[:3]
+
+    for s in top_3:
+        try:
+            orchestrator.analyze_and_record_with_memory(
+                ticker=s.ticker,
+                snap=s,
+                ihsg_info=ihsg_info,
+                timeframe="15m",
+                horizon_bars=8,
+                horizon_minutes=120,
+                execution_mode=config.EXECUTION_MODE,
+            )
+        except Exception:
+            pass
 
     header = (
         f"🚨 *INFO SAHAM BAGUS JAM INI ({wib_now})*\n"
@@ -432,3 +522,56 @@ def chat_with_ai_team(user_message: str) -> str:
             f"• ⏰ *Jam Beli:* {s.get('best_execution_window', '')}"
         ).replace(",", ".")
     return "👨‍💼 *Tim AI Saham:* Siap Bos! Ketik `/dsu`, `/scan`, atau `/cek BBCA` untuk pantauan saham hari ini."
+
+
+def get_performance_dashboard_report(execution_mode: str | None = None) -> str:
+    """Menjalankan siklus evaluasi prediksi tertunda lalu menampilkan dashboard performa & self-learning."""
+    orchestrator = LearningLoopOrchestrator()
+    try:
+        orchestrator.run_evaluation_and_learning_cycle()
+    except Exception:
+        pass
+    perf = PerformanceAnalyzer(orchestrator.db)
+    return perf.format_performance_report_markdown(execution_mode=execution_mode)
+
+
+def get_ticker_memory_report(ticker_input: str) -> str:
+    """Menampilkan memori pengalaman, riwayat evaluasi, dan kalibrasi setup untuk 1 saham."""
+    norm = config.normalize_ticker(ticker_input)
+    snap = analyze_ticker_quant(norm)
+    ihsg = get_ihsg_overview()
+    orchestrator = LearningLoopOrchestrator()
+    setup_type = snap.setup_type if snap else "VWAP_BREAKOUT_UPTREND"
+    score = snap.quant_score if snap else 60
+    regime = str(ihsg.get("regime", "NEUTRAL"))
+
+    bundle = orchestrator.retriever.retrieve_relevant_memories(
+        ticker=norm,
+        setup_type=setup_type,
+        timeframe="15m",
+        ihsg_regime=regime,
+        max_items=6,
+    )
+    cal_conf, basis = orchestrator.retriever.calibrate_confidence(
+        raw_quant_score=score,
+        setup_type=setup_type,
+        timeframe="15m",
+        ihsg_regime=regime,
+        ticker=norm,
+    )
+    lines = [
+        f"🧠 *MEMORI & PENGALAMAN AI UNTUK {norm}*",
+        f"• *Setup Saat Ini:* `{setup_type}` | *Rezim IHSG:* `{regime}`",
+        f"• *Confidence Terkalibrasi:* *{cal_conf*100:.1f}%* ({basis})",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if not bundle["memories"]:
+        lines.append("ℹ️ Belum ada riwayat evaluasi tersimpan untuk kombinasi saham/setup ini.")
+    else:
+        for idx, m in enumerate(bundle["memories"], start=1):
+            lines.extend([
+                f"\n*{idx}. [{m['type']}]* (`{m['validity_level']}`)",
+                f"   • Cakupan: `{m['scope']}` | Sampel N={m['sample_size']} | Waktu: `{m['timestamp'][:16]}`",
+                f"   • Pelajaran: {m['lesson']}",
+            ])
+    return "\n".join(lines)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from typing import Any, Optional
 import math
@@ -6,6 +6,22 @@ import numpy as np
 import pandas as pd
 import pytz
 import yfinance as yf
+
+import config
+
+
+def get_idx_tick_size(price: float, is_idx: bool = True) -> float:
+    if not is_idx:
+        return 0.01
+    if price < 200:
+        return 1.0
+    elif price < 500:
+        return 2.0
+    elif price < 2000:
+        return 5.0
+    elif price < 5000:
+        return 10.0
+    return 25.0
 
 
 def round_idx_tick(price: float, is_idx: bool = True) -> float:
@@ -138,6 +154,24 @@ class TechnicalSnapshot:
     best_execution_window: str
     best_sell_window: str
     signals_detected: list[str]
+    # Phase 2-5 Audit, Epistemic Separation, & Persistent Memory Fields
+    setup_type: str = "GENERAL_SETUP"
+    direction: str = "WAIT"
+    tick_size: float = 1.0
+    spread_pct: float = 0.0
+    last_bar_iso: str = ""
+    volume_shares: float = 0.0
+    supporting_evidence: list[str] = field(default_factory=list)
+    opposing_evidence: list[str] = field(default_factory=list)
+    technical_facts: list[str] = field(default_factory=list)
+    interpretations: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    invalidation_conditions: str = ""
+    estimated_risk_pct: float = 0.0
+    estimated_gross_return_pct: float = 0.0
+    estimated_net_return_pct: float = 0.0
+    data_is_valid: bool = True
+    validation_notes: str = "Valid OHLCV data"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -199,6 +233,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     intra_macd_hist = 0.0
     intra_vol_spike = 1.0
     last_bar_str = str(df_daily.index[-1].strftime("%Y-%m-%d"))
+    last_bar_iso = pd.Timestamp(df_daily.index[-1]).tz_localize("Asia/Jakarta").isoformat() if df_daily.index[-1].tzinfo is None else df_daily.index[-1].tz_convert("Asia/Jakarta").isoformat()
 
     if df_intra is not None and not df_intra.empty and len(df_intra) >= 15:
         df_intra = df_intra.dropna(subset=["Close", "High", "Low"]).copy()
@@ -228,7 +263,10 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
                 bar_dt = df_intra.index[-1]
                 if bar_dt.tzinfo is not None:
                     bar_dt = bar_dt.astimezone(pytz.timezone("Asia/Jakarta"))
+                else:
+                    bar_dt = pytz.timezone("Asia/Jakarta").localize(bar_dt)
                 last_bar_str = bar_dt.strftime("%Y-%m-%d %H:%M WIB")
+                last_bar_iso = bar_dt.isoformat()
             except Exception:
                 pass
 
@@ -385,11 +423,76 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
 
     rr_ratio = round((tp1 - entry_high) / risk_per_share, 2) if risk_per_share > 0 else 1.5
 
-    # --- 6. Rekomendasi Aksi & Jam Eksekusi Terbaik ---
+    # --- 6. Evaluasi Spread Bid-Ask, Bukti Pendukung vs Penentang, & Setup Classification ---
+    tick_sz = get_idx_tick_size(current_price, is_idx)
+    spread_pct = round((tick_sz / current_price) * 100.0, 4) if current_price > 0 else 0.0
+    total_fee_slip_pct = config.FEE_BUY_PCT + config.FEE_SELL_PCT + config.DEFAULT_SLIPPAGE_PCT
+
+    supporting_ev: list[str] = list(signals)
+    opposing_ev: list[str] = []
+
+    if current_price < ema20_d:
+        opposing_ev.append(f"Harga (Rp {current_price:,.0f}) masih di bawah EMA20 Daily (Rp {ema20_d:,.0f})")
+    if current_price < intra_vwap:
+        opposing_ev.append(f"Harga masih di bawah VWAP Intraday (Rp {intra_vwap:,.0f})")
+    if max_vol_surge < 1.0:
+        opposing_ev.append(f"Volume transaksi relatif sepi ({max_vol_surge:.2f}x rata-rata)")
+    if spread_pct > 0.80:
+        score -= 18
+        opposing_ev.append(
+            f"Spread minimum 1 tick terlalu lebar ({spread_pct:.2f}% per tick) dibanding biaya transaksi ({total_fee_slip_pct:.2f}%)"
+        )
+
+    score = int(max(5, min(98, score)))
+
+    est_risk_pct = round(((entry_high - stop_loss) / entry_high) * 100.0, 2) if entry_high > 0 else 0.0
+    est_gross_ret_pct = round(((tp1 - entry_high) / entry_high) * 100.0, 2) if entry_high > 0 else 0.0
+    est_net_ret_pct = round(est_gross_ret_pct - total_fee_slip_pct, 2)
+
+    # Tentukan Setup Type & Direction secara objektif
+    if spread_pct > 1.0 or est_net_ret_pct <= 0.30:
+        setup_type = "HIGH_SPREAD_OR_LOW_NET_EDGE_WAIT"
+        direction = "WAIT"
+    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.2:
+        setup_type = "VWAP_BREAKOUT_UPTREND"
+        direction = "BUY" if score >= 62 else "WAIT"
+    elif current_price >= intra_vwap and rsi_d < 45:
+        setup_type = "OVERSOLD_VWAP_RECLAIM"
+        direction = "BUY" if score >= 60 else "WAIT"
+    elif current_price >= intra_vwap and score >= 62:
+        setup_type = "INTRADAY_VWAP_SUPPORT"
+        direction = "BUY"
+    elif score < 45:
+        setup_type = "BEARISH_BELOW_VWAP"
+        direction = "AVOID"
+    else:
+        setup_type = "CONSOLIDATION_WAIT"
+        direction = "WAIT"
+
+    tech_facts = [
+        f"Harga terakhir={round_idx_tick(current_price, is_idx):.0f} pada {last_bar_str} ({change_pct:+.2f}%)",
+        f"VWAP 15m={round_idx_tick(intra_vwap, is_idx):.0f}, EMA9 15m={round_idx_tick(intra_ema9, is_idx):.0f}, EMA21 15m={round_idx_tick(intra_ema21, is_idx):.0f}",
+        f"EMA20 Daily={round_idx_tick(ema20_d, is_idx):.0f}, EMA50 Daily={round_idx_tick(ema50_d, is_idx):.0f}, RSI Daily={rsi_d:.1f}, RSI 15m={intra_rsi:.1f}",
+        f"Volume Ratio={max_vol_surge:.2f}x, ATR(14)={atr_val:.1f}, Tick Size={tick_sz:.0f} ({spread_pct:.2f}%)",
+    ]
+    interpretations = [
+        f"Tren Harian: {daily_trend}; Status Intraday: {intraday_status}",
+        f"Setup diklasifikasikan sebagai {setup_type} dengan estimasi net return {est_net_ret_pct:+.2f}% setelah biaya {total_fee_slip_pct:.2f}%.",
+    ]
+    assumptions = [
+        f"Asumsi biaya beli {config.FEE_BUY_PCT:.2f}% + biaya jual {config.FEE_SELL_PCT:.2f}% + slippage {config.DEFAULT_SLIPPAGE_PCT:.2f}%.",
+        "Order Book Level 2 real-time tidak tersedia dari feed yfinance; likuiditas diestimasi dari rasio volume & fraksi tick BEI.",
+    ]
+    invalidation_cond = (
+        f"Sinyal batal jika candle 15m tutup di bawah Stop Loss (Rp {stop_loss:,.0f}) "
+        f"atau jatuh kembali ke bawah VWAP (Rp {round_idx_tick(intra_vwap, is_idx):,.0f}) dengan tekanan volume jual."
+    ).replace(",", ".")
+
+    # --- 7. Rekomendasi Aksi & Jam Eksekusi Terbaik ---
     wib_now = datetime.now(pytz.timezone("Asia/Jakarta"))
     hour_float = wib_now.hour + wib_now.minute / 60.0
 
-    if score >= 75:
+    if direction == "BUY" and score >= 75:
         action_label = "STRONG BUY (Momentum & Intraday Kuat)"
         if 9.0 <= hour_float <= 11.5:
             best_window = "Sesi 1 Pagi (09:15 - 10:30 WIB) saat konfirmasi bertahan di atas VWAP"
@@ -401,7 +504,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
             f"Pasang Jual Otomatis di TP1 (Rp {tp1:,.0f}). Biasanya tercapai jam 10:45-11:30 WIB, "
             "jam 14:30-15:45 WIB, atau besok pagi jam 09:05-09:30 WIB saat lonjakan buka pasar."
         ).replace(",", ".")
-    elif score >= 62:
+    elif direction == "BUY" and score >= 60:
         action_label = "BUY ON WEAKNESS (Antri di Area Support / VWAP)"
         best_window = "Tunggu koreksi wajar jam 10:15 - 11:15 WIB atau 13:45 - 14:30 WIB di Area Beli"
         best_sell = (
@@ -409,9 +512,9 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
             "Jam jual terbaik biasanya pagi hari (09:10 - 10:00 WIB) saat harga memantul naik, "
             f"atau wajib jual jam 15:30-15:45 WIB jika harga turun jebol Rem Darurat (< Rp {stop_loss:,.0f})."
         ).replace(",", ".")
-    elif score >= 48:
+    elif direction == "WAIT":
         action_label = "WAIT & SEE (Tunggu Breakout / Konfirmasi Volume)"
-        best_window = "Jangan buru-buru masuk; tunggu tembus VWAP/Resistance dengan volume"
+        best_window = "Jangan buru-buru masuk; tunggu tembus VWAP/Resistance dengan volume & spread memadai"
         best_sell = "Jika sudah terlanjur punya, manfaatkan kenaikan jam 09:15-10:00 WIB untuk jual di dekat Resistance."
     else:
         action_label = "AVOID / HINDARI DULU (Tekanan Jual Masih Dominan)"
@@ -462,6 +565,23 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         best_execution_window=best_window,
         best_sell_window=best_sell,
         signals_detected=signals,
+        setup_type=setup_type,
+        direction=direction,
+        tick_size=tick_sz,
+        spread_pct=spread_pct,
+        last_bar_iso=last_bar_iso,
+        volume_shares=float(last_d["Volume"]),
+        supporting_evidence=supporting_ev,
+        opposing_evidence=opposing_ev,
+        technical_facts=tech_facts,
+        interpretations=interpretations,
+        assumptions=assumptions,
+        invalidation_conditions=invalidation_cond,
+        estimated_risk_pct=est_risk_pct,
+        estimated_gross_return_pct=est_gross_ret_pct,
+        estimated_net_return_pct=est_net_ret_pct,
+        data_is_valid=True,
+        validation_notes="Valid OHLCV Daily + 15m Intraday snapshot",
     )
 
 
@@ -478,15 +598,24 @@ def get_ihsg_overview() -> dict[str, Any]:
         prev_close = float(prev["Close"])
         chg = ((close - prev_close) / prev_close) * 100.0
         ema20 = float(df["Close"].ewm(span=20, adjust=False).mean().iloc[-1])
+        if close >= ema20 and chg >= 0:
+            regime = "BULLISH_UPTREND"
+        elif close >= ema20 and chg < 0:
+            regime = "BULLISH_PULLBACK"
+        elif close < ema20 and chg >= 0:
+            regime = "BEARISH_RECOVERY"
+        else:
+            regime = "BEARISH_DOWNTREND"
         return {
             "index": "IHSG (^JKSE)",
             "last_close": round(close, 2),
             "change_pct": round(chg, 2),
             "above_ema20": close >= ema20,
-            "summary": f"IHSG di level {close:,.2f} ({chg:+.2f}%), {'di atas' if close >= ema20 else 'di bawah'} EMA20 ({ema20:,.2f})",
+            "regime": regime,
+            "summary": f"IHSG di level {close:,.2f} ({chg:+.2f}%), {'di atas' if close >= ema20 else 'di bawah'} EMA20 ({ema20:,.2f}) [Rezim: {regime}]",
         }
     except Exception as e:
-        return {"status": f"Gagal memuat IHSG: {e}"}
+        return {"status": f"Gagal memuat IHSG: {e}", "regime": "NEUTRAL"}
 
 
 def scan_watchlist_quant(tickers: list[str]) -> list[TechnicalSnapshot]:

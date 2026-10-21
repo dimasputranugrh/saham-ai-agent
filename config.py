@@ -17,8 +17,44 @@ DSU_MORNING_TIME = os.getenv("DSU_MORNING_TIME", "08:15").strip()
 MARKET_CLOSE_TIME = os.getenv("MARKET_CLOSE_TIME", "16:15").strip()
 MIN_INTRADAY_ALERT_SCORE = int(os.getenv("MIN_INTRADAY_ALERT_SCORE", "68"))
 
+STOCKBIT_TRADING_PIN = os.getenv("STOCKBIT_TRADING_PIN", "").strip()
+STOCKBIT_MAX_LOT = int(os.getenv("STOCKBIT_MAX_LOT", "2"))
+STOCKBIT_PROFILE_DIR = BASE_DIR / "data" / "stockbit_profile"
+
 WATCHLIST_FILE = BASE_DIR / "data" / "watchlist.json"
 PORTFOLIO_FILE = BASE_DIR / "data" / "portfolio.json"
+MEMORY_DB_PATH = Path(os.getenv("MEMORY_DB_PATH", str(BASE_DIR / "data" / "agent_memory.db")))
+BACKUP_DIR = BASE_DIR / "data" / "backups"
+
+# Default ke PAPER trading demi keamanan (Safety Phase 8)
+EXECUTION_MODE = os.getenv("EXECUTION_MODE", "PAPER").strip().upper()
+ALLOW_LIVE_BROKER_EXECUTION = os.getenv("ALLOW_LIVE_BROKER_EXECUTION", "false").strip().lower() == "true"
+
+# Biaya Transaksi & Asumsi Slippage BEI/IDX (Standar Stockbit Sekuritas)
+FEE_BUY_PCT = float(os.getenv("FEE_BUY_PCT", "0.15"))      # 0.15%
+FEE_SELL_PCT = float(os.getenv("FEE_SELL_PCT", "0.25"))    # 0.25%
+DEFAULT_SLIPPAGE_PCT = float(os.getenv("DEFAULT_SLIPPAGE_PCT", "0.10"))  # 0.10%
+
+# Versi Model, Prompt, dan Strategi untuk Audit Trail
+AGENT_PROMPT_VERSION = "v2.1-memory-calibrated"
+DEFAULT_STRATEGY_NAME = "IDX_VWAP_MOMENTUM_HYBRID"
+DEFAULT_STRATEGY_VERSION = "1.0.0"
+
+SECTOR_MAP = {
+    "BBCA.JK": "FINANCE",
+    "BBRI.JK": "FINANCE",
+    "BMRI.JK": "FINANCE",
+    "BBNI.JK": "FINANCE",
+    "TLKM.JK": "INFRASTRUCTURE_TELCO",
+    "ASII.JK": "INDUSTRIAL_AUTO",
+    "BREN.JK": "RENEWABLE_ENERGY",
+    "AMMN.JK": "BASIC_MATERIALS_MINING",
+    "ANTM.JK": "BASIC_MATERIALS_MINING",
+    "MDKA.JK": "BASIC_MATERIALS_MINING",
+    "ADRO.JK": "ENERGY_COAL",
+    "PGAS.JK": "ENERGY_GAS",
+    "GOTO.JK": "TECHNOLOGY",
+}
 
 
 def load_portfolio() -> dict[str, dict]:

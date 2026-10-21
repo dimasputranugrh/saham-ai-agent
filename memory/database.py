@@ -1,0 +1,563 @@
+import json
+import math
+import shutil
+import sqlite3
+import uuid
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Iterator, Optional
+import pytz
+
+import config
+
+WIB = pytz.timezone(config.TIMEZONE)
+VALID_DIRECTIONS = {"BUY", "SELL", "WAIT", "AVOID"}
+VALID_EXECUTION_MODES = {"PAPER", "BACKTEST", "LIVE"}
+VALID_EVAL_STATUSES = {
+    "PENDING",
+    "RESOLVED_WIN_TP1",
+    "RESOLVED_WIN_TP2",
+    "RESOLVED_LOSS_SL",
+    "RESOLVED_TIME_EXIT",
+    "AMBIGUOUS_BAR_ORDER",
+    "EXPIRED_NO_FILL",
+    "INSUFFICIENT_DATA",
+    "SKIPPED_WAIT",
+}
+
+
+def now_wib_iso() -> str:
+    return datetime.now(WIB).isoformat()
+
+
+def _clean_float(val: Any, default: Optional[float] = 0.0) -> Optional[float]:
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
+
+class MemoryDatabase:
+    """
+    Persistent SQLite database with WAL mode, schema migration tracking,
+    immutability triggers on `analysis_history`, online backup/restore,
+    and strict input validation.
+    """
+
+    def __init__(self, db_path: Optional[Path | str] = None):
+        self.db_path = Path(db_path) if db_path else config.MEMORY_DB_PATH
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._apply_migrations()
+
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        conn = sqlite3.connect(str(self.db_path), timeout=15.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def _apply_migrations(self) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                """
+            )
+            applied = {
+                row["version"]
+                for row in conn.execute("SELECT version FROM schema_migrations").fetchall()
+            }
+
+            if 1 not in applied:
+                self._migration_v1(conn)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+                    (1, "initial_persistent_memory_and_learning_schema", now_wib_iso()),
+                )
+
+    def _migration_v1(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            -- 1. MARKET SNAPSHOTS
+            CREATE TABLE IF NOT EXISTS market_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                captured_at_wib TEXT NOT NULL,
+                timezone TEXT NOT NULL DEFAULT 'Asia/Jakarta',
+                ticker TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                last_bar_timestamp TEXT NOT NULL,
+                price REAL NOT NULL CHECK (price > 0),
+                open_price REAL,
+                high_price REAL,
+                low_price REAL,
+                volume REAL DEFAULT 0 CHECK (volume >= 0),
+                vwap REAL,
+                ema9 REAL,
+                ema21 REAL,
+                ema20 REAL,
+                ema50 REAL,
+                sma200 REAL,
+                rsi REAL,
+                macd_hist REAL,
+                atr REAL,
+                vol_ratio REAL,
+                ihsg_close REAL,
+                ihsg_change_pct REAL,
+                ihsg_regime TEXT NOT NULL,
+                sector TEXT NOT NULL,
+                tick_size REAL NOT NULL CHECK (tick_size > 0),
+                spread_pct REAL NOT NULL CHECK (spread_pct >= 0),
+                order_book_available INTEGER NOT NULL DEFAULT 0,
+                order_book_summary_json TEXT,
+                data_source TEXT NOT NULL DEFAULT 'yfinance',
+                data_updated_at TEXT NOT NULL,
+                data_is_valid INTEGER NOT NULL DEFAULT 1,
+                validation_notes TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_snapshots_ticker_tf_time
+                ON market_snapshots(ticker, timeframe, last_bar_timestamp);
+
+            -- 2. ANALYSIS HISTORY (Immutable Initial Predictions)
+            CREATE TABLE IF NOT EXISTS analysis_history (
+                analysis_id TEXT PRIMARY KEY,
+                snapshot_id TEXT NOT NULL REFERENCES market_snapshots(snapshot_id),
+                created_at_wib TEXT NOT NULL,
+                bar_cutoff_timestamp TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                direction TEXT NOT NULL CHECK (direction IN ('BUY', 'SELL', 'WAIT', 'AVOID')),
+                execution_mode TEXT NOT NULL DEFAULT 'PAPER' CHECK (execution_mode IN ('PAPER', 'BACKTEST', 'LIVE')),
+                strategy_name TEXT NOT NULL,
+                setup_type TEXT NOT NULL,
+                ihsg_regime TEXT NOT NULL,
+                sector TEXT NOT NULL,
+                technical_facts_json TEXT NOT NULL,
+                interpretations_json TEXT NOT NULL,
+                assumptions_json TEXT NOT NULL,
+                supporting_evidence_json TEXT NOT NULL,
+                opposing_evidence_json TEXT NOT NULL,
+                fundamental_news_context TEXT,
+                entry_price REAL NOT NULL CHECK (entry_price > 0),
+                entry_low REAL NOT NULL CHECK (entry_low > 0),
+                entry_high REAL NOT NULL CHECK (entry_high >= entry_low),
+                stop_loss REAL NOT NULL CHECK (stop_loss > 0),
+                take_profit_1 REAL NOT NULL CHECK (take_profit_1 > 0),
+                take_profit_2 REAL NOT NULL CHECK (take_profit_2 >= take_profit_1),
+                horizon_bars INTEGER NOT NULL CHECK (horizon_bars > 0),
+                horizon_minutes INTEGER NOT NULL CHECK (horizon_minutes > 0),
+                evaluate_after_wib TEXT NOT NULL,
+                estimated_risk_pct REAL NOT NULL,
+                estimated_gross_return_pct REAL NOT NULL,
+                estimated_net_return_pct REAL NOT NULL,
+                reward_to_risk REAL NOT NULL,
+                raw_quant_score INTEGER NOT NULL CHECK (raw_quant_score BETWEEN 0 AND 100),
+                calibrated_confidence REAL NOT NULL CHECK (calibrated_confidence BETWEEN 0.0 AND 1.0),
+                confidence_basis TEXT NOT NULL,
+                invalidation_conditions TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                strategy_version TEXT NOT NULL,
+                memory_ids_used_json TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_analysis_ticker_setup
+                ON analysis_history(ticker, setup_type, timeframe, execution_mode);
+            CREATE INDEX IF NOT EXISTS idx_analysis_eval_due
+                ON analysis_history(evaluate_after_wib);
+
+            -- IMMUTABILITY TRIGGERS ON analysis_history
+            CREATE TRIGGER IF NOT EXISTS trg_analysis_history_immutable_update
+            BEFORE UPDATE ON analysis_history
+            BEGIN
+                SELECT RAISE(ABORT, 'Immutable Audit Trail Violation: analysis_history records cannot be modified after creation.');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_analysis_history_immutable_delete
+            BEFORE DELETE ON analysis_history
+            BEGIN
+                SELECT RAISE(ABORT, 'Immutable Audit Trail Violation: analysis_history records cannot be deleted.');
+            END;
+
+            -- 3. PREDICTION OUTCOMES
+            CREATE TABLE IF NOT EXISTS prediction_outcomes (
+                outcome_id TEXT PRIMARY KEY,
+                analysis_id TEXT NOT NULL UNIQUE REFERENCES analysis_history(analysis_id),
+                evaluated_at_wib TEXT NOT NULL,
+                evaluation_status TEXT NOT NULL,
+                entry_filled INTEGER NOT NULL DEFAULT 0,
+                entry_fill_price REAL,
+                entry_fill_timestamp TEXT,
+                exit_price REAL,
+                exit_timestamp TEXT,
+                actual_high_in_horizon REAL,
+                actual_low_in_horizon REAL,
+                actual_close_at_horizon REAL,
+                bars_evaluated INTEGER NOT NULL DEFAULT 0,
+                gross_return_pct REAL NOT NULL DEFAULT 0.0,
+                net_return_pct REAL NOT NULL DEFAULT 0.0,
+                fee_buy_pct REAL NOT NULL,
+                fee_sell_pct REAL NOT NULL,
+                slippage_pct REAL NOT NULL,
+                duration_minutes REAL NOT NULL DEFAULT 0.0,
+                is_ambiguous INTEGER NOT NULL DEFAULT 0,
+                resolution_notes TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_outcomes_status
+                ON prediction_outcomes(evaluation_status);
+
+            -- 4. STRATEGY LESSONS
+            CREATE TABLE IF NOT EXISTS strategy_lessons (
+                lesson_id TEXT PRIMARY KEY,
+                strategy_name TEXT NOT NULL,
+                strategy_version TEXT NOT NULL,
+                setup_type TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                ihsg_regime TEXT NOT NULL,
+                ticker_scope TEXT NOT NULL DEFAULT 'ALL',
+                execution_mode TEXT NOT NULL DEFAULT 'PAPER',
+                sample_size INTEGER NOT NULL DEFAULT 0,
+                resolved_trades INTEGER NOT NULL DEFAULT 0,
+                ambiguous_trades INTEGER NOT NULL DEFAULT 0,
+                win_count INTEGER NOT NULL DEFAULT 0,
+                loss_count INTEGER NOT NULL DEFAULT 0,
+                win_rate REAL NOT NULL DEFAULT 0.0,
+                avg_win_net_pct REAL NOT NULL DEFAULT 0.0,
+                avg_loss_net_pct REAL NOT NULL DEFAULT 0.0,
+                expectancy_net_pct REAL NOT NULL DEFAULT 0.0,
+                profit_factor REAL NOT NULL DEFAULT 0.0,
+                max_drawdown_pct REAL NOT NULL DEFAULT 0.0,
+                cumulative_net_return_pct REAL NOT NULL DEFAULT 0.0,
+                uncertainty_level TEXT NOT NULL,
+                measured_facts_json TEXT NOT NULL,
+                hypothesis_text TEXT NOT NULL,
+                ai_interpretation_text TEXT NOT NULL,
+                validation_status TEXT NOT NULL CHECK (validation_status IN ('CANDIDATE', 'VALIDATED', 'DEGRADED', 'REJECTED')),
+                evaluated_at_wib TEXT NOT NULL,
+                UNIQUE(strategy_name, strategy_version, setup_type, timeframe, ihsg_regime, ticker_scope, execution_mode)
+            );
+
+            -- 5. STRATEGY VERSIONS (Controlled Improvement & Rollback)
+            CREATE TABLE IF NOT EXISTS strategy_versions (
+                version_id TEXT PRIMARY KEY,
+                strategy_name TEXT NOT NULL,
+                version_tag TEXT NOT NULL,
+                parent_version_tag TEXT,
+                parameters_json TEXT NOT NULL,
+                hypothesis TEXT NOT NULL,
+                train_sample_size INTEGER NOT NULL DEFAULT 0,
+                oos_sample_size INTEGER NOT NULL DEFAULT 0,
+                baseline_expectancy_pct REAL NOT NULL DEFAULT 0.0,
+                oos_expectancy_pct REAL NOT NULL DEFAULT 0.0,
+                oos_max_drawdown_pct REAL NOT NULL DEFAULT 0.0,
+                status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'PROPOSED', 'ROLLED_BACK', 'REJECTED')),
+                created_at_wib TEXT NOT NULL,
+                notes TEXT,
+                UNIQUE(strategy_name, version_tag)
+            );
+            """
+        )
+
+        # Seed default baseline strategy version v1.0.0 if not exists
+        default_params = {
+            "min_intraday_score": 68,
+            "min_volume_ratio": 1.3,
+            "max_spread_pct": 0.65,
+            "sl_atr_multiplier": 0.9,
+            "tp1_rr_multiplier": 1.6,
+            "tp2_rr_multiplier": 2.8,
+            "require_above_vwap_for_strong_buy": True,
+        }
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO strategy_versions (
+                version_id, strategy_name, version_tag, parent_version_tag,
+                parameters_json, hypothesis, train_sample_size, oos_sample_size,
+                baseline_expectancy_pct, oos_expectancy_pct, oos_max_drawdown_pct,
+                status, created_at_wib, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                config.DEFAULT_STRATEGY_NAME,
+                config.DEFAULT_STRATEGY_VERSION,
+                None,
+                json.dumps(default_params),
+                "Baseline hybrid VWAP + EMA + ATR strategy for IDX stocks.",
+                0,
+                0,
+                0.0,
+                0.0,
+                0.0,
+                "ACTIVE",
+                now_wib_iso(),
+                "Initial baseline strategy version.",
+            ),
+        )
+
+    def save_market_snapshot(self, data: dict[str, Any]) -> str:
+        """Validates and stores a market snapshot. Returns `snapshot_id`."""
+        price = _clean_float(data.get("price"), None)
+        if price is None or price <= 0:
+            raise ValueError(f"Invalid snapshot price: {data.get('price')}")
+
+        ticker = str(data.get("ticker", "")).strip().upper()
+        if not ticker:
+            raise ValueError("Ticker is required for market snapshot.")
+
+        timeframe = str(data.get("timeframe", "15m")).strip()
+        last_bar_ts = str(data.get("last_bar_timestamp", "")).strip()
+        if not last_bar_ts:
+            raise ValueError("last_bar_timestamp is required for market snapshot.")
+
+        tick_size = _clean_float(data.get("tick_size"), 1.0)
+        if not tick_size or tick_size <= 0:
+            tick_size = 1.0
+        spread_pct = _clean_float(data.get("spread_pct"), round((tick_size / price) * 100.0, 4))
+
+        snapshot_id = str(data.get("snapshot_id") or uuid.uuid4())
+        captured_at = str(data.get("captured_at_wib") or now_wib_iso())
+        sector = str(data.get("sector") or config.SECTOR_MAP.get(ticker, "GENERAL_IDX"))
+        ihsg_regime = str(data.get("ihsg_regime") or "NEUTRAL")
+        data_is_valid = 1 if data.get("data_is_valid", True) else 0
+
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO market_snapshots (
+                    snapshot_id, captured_at_wib, timezone, ticker, timeframe,
+                    last_bar_timestamp, price, open_price, high_price, low_price,
+                    volume, vwap, ema9, ema21, ema20, ema50, sma200, rsi,
+                    macd_hist, atr, vol_ratio, ihsg_close, ihsg_change_pct,
+                    ihsg_regime, sector, tick_size, spread_pct,
+                    order_book_available, order_book_summary_json,
+                    data_source, data_updated_at, data_is_valid, validation_notes
+                ) VALUES (
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?
+                )
+                """,
+                (
+                    snapshot_id,
+                    captured_at,
+                    str(data.get("timezone", config.TIMEZONE)),
+                    ticker,
+                    timeframe,
+                    last_bar_ts,
+                    price,
+                    _clean_float(data.get("open_price"), price),
+                    _clean_float(data.get("high_price"), price),
+                    _clean_float(data.get("low_price"), price),
+                    max(0.0, _clean_float(data.get("volume"), 0.0) or 0.0),
+                    _clean_float(data.get("vwap"), price),
+                    _clean_float(data.get("ema9"), price),
+                    _clean_float(data.get("ema21"), price),
+                    _clean_float(data.get("ema20"), price),
+                    _clean_float(data.get("ema50"), price),
+                    _clean_float(data.get("sma200"), price),
+                    _clean_float(data.get("rsi"), 50.0),
+                    _clean_float(data.get("macd_hist"), 0.0),
+                    _clean_float(data.get("atr"), price * 0.02),
+                    _clean_float(data.get("vol_ratio"), 1.0),
+                    _clean_float(data.get("ihsg_close"), None),
+                    _clean_float(data.get("ihsg_change_pct"), None),
+                    ihsg_regime,
+                    sector,
+                    tick_size,
+                    max(0.0, spread_pct or 0.0),
+                    1 if data.get("order_book_available") else 0,
+                    json.dumps(data.get("order_book_summary") or {}),
+                    str(data.get("data_source", "yfinance")),
+                    str(data.get("data_updated_at") or captured_at),
+                    data_is_valid,
+                    str(data.get("validation_notes", "Valid OHLCV snapshot")),
+                ),
+            )
+        return snapshot_id
+
+    def save_analysis_prediction(self, record: dict[str, Any]) -> str:
+        """
+        Validates and saves an immutable initial prediction in `analysis_history`.
+        Once saved, SQLite triggers prevent any modification or deletion.
+        """
+        direction = str(record.get("direction", "WAIT")).strip().upper()
+        if direction not in VALID_DIRECTIONS:
+            raise ValueError(f"Invalid prediction direction: {direction}")
+
+        exec_mode = str(record.get("execution_mode", config.EXECUTION_MODE)).strip().upper()
+        if exec_mode not in VALID_EXECUTION_MODES:
+            raise ValueError(f"Invalid execution mode: {exec_mode}")
+
+        entry_low = _clean_float(record.get("entry_low"), None)
+        entry_high = _clean_float(record.get("entry_high"), None)
+        entry_price = _clean_float(record.get("entry_price"), entry_high)
+        stop_loss = _clean_float(record.get("stop_loss"), None)
+        tp1 = _clean_float(record.get("take_profit_1"), None)
+        tp2 = _clean_float(record.get("take_profit_2"), tp1)
+
+        if not all(x is not None and x > 0 for x in [entry_low, entry_high, entry_price, stop_loss, tp1, tp2]):
+            raise ValueError("All price levels (entry, stop_loss, take_profit) must be positive numbers.")
+        if entry_high < entry_low:
+            entry_high = entry_low
+        if tp2 < tp1:
+            tp2 = tp1
+
+        conf = _clean_float(record.get("calibrated_confidence"), 0.5)
+        if conf is None or not (0.0 <= conf <= 1.0):
+            raise ValueError(f"calibrated_confidence must be in [0.0, 1.0], got {conf}")
+
+        analysis_id = str(record.get("analysis_id") or uuid.uuid4())
+        created_at = str(record.get("created_at_wib") or now_wib_iso())
+        bar_cutoff = str(record.get("bar_cutoff_timestamp") or created_at)
+        ticker = str(record.get("ticker", "")).strip().upper()
+
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO analysis_history (
+                    analysis_id, snapshot_id, created_at_wib, bar_cutoff_timestamp,
+                    ticker, timeframe, direction, execution_mode,
+                    strategy_name, setup_type, ihsg_regime, sector,
+                    technical_facts_json, interpretations_json, assumptions_json,
+                    supporting_evidence_json, opposing_evidence_json,
+                    fundamental_news_context,
+                    entry_price, entry_low, entry_high, stop_loss, take_profit_1, take_profit_2,
+                    horizon_bars, horizon_minutes, evaluate_after_wib,
+                    estimated_risk_pct, estimated_gross_return_pct, estimated_net_return_pct,
+                    reward_to_risk, raw_quant_score, calibrated_confidence,
+                    confidence_basis, invalidation_conditions,
+                    model_version, prompt_version, strategy_version, memory_ids_used_json
+                ) VALUES (
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
+                    ?,
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?
+                )
+                """,
+                (
+                    analysis_id,
+                    str(record["snapshot_id"]),
+                    created_at,
+                    bar_cutoff,
+                    ticker,
+                    str(record.get("timeframe", "15m")),
+                    direction,
+                    exec_mode,
+                    str(record.get("strategy_name", config.DEFAULT_STRATEGY_NAME)),
+                    str(record.get("setup_type", "GENERAL_SETUP")),
+                    str(record.get("ihsg_regime", "NEUTRAL")),
+                    str(record.get("sector") or config.SECTOR_MAP.get(ticker, "GENERAL_IDX")),
+                    json.dumps(record.get("technical_facts") or [], ensure_ascii=False),
+                    json.dumps(record.get("interpretations") or [], ensure_ascii=False),
+                    json.dumps(record.get("assumptions") or [], ensure_ascii=False),
+                    json.dumps(record.get("supporting_evidence") or [], ensure_ascii=False),
+                    json.dumps(record.get("opposing_evidence") or [], ensure_ascii=False),
+                    str(record.get("fundamental_news_context", "")),
+                    entry_price,
+                    entry_low,
+                    entry_high,
+                    stop_loss,
+                    tp1,
+                    tp2,
+                    int(record.get("horizon_bars", 16)),
+                    int(record.get("horizon_minutes", 240)),
+                    str(record.get("evaluate_after_wib") or created_at),
+                    _clean_float(record.get("estimated_risk_pct"), 0.0),
+                    _clean_float(record.get("estimated_gross_return_pct"), 0.0),
+                    _clean_float(record.get("estimated_net_return_pct"), 0.0),
+                    _clean_float(record.get("reward_to_risk"), 1.0),
+                    int(max(0, min(100, int(record.get("raw_quant_score", 50))))),
+                    conf,
+                    str(record.get("confidence_basis", "Empirical + Quantitative Score Calibration")),
+                    str(record.get("invalidation_conditions", "Price closes below Stop Loss or VWAP.")),
+                    str(record.get("model_version", config.GEMINI_MODEL)),
+                    str(record.get("prompt_version", config.AGENT_PROMPT_VERSION)),
+                    str(record.get("strategy_version", self.get_active_strategy_version(str(record.get("strategy_name", config.DEFAULT_STRATEGY_NAME)))["version_tag"])),
+                    json.dumps(record.get("memory_ids_used") or []),
+                ),
+            )
+        return analysis_id
+
+    def get_active_strategy_version(self, strategy_name: str = config.DEFAULT_STRATEGY_NAME) -> dict[str, Any]:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM strategy_versions
+                WHERE strategy_name = ? AND status = 'ACTIVE'
+                ORDER BY created_at_wib DESC LIMIT 1
+                """,
+                (strategy_name,),
+            ).fetchone()
+            if row:
+                d = dict(row)
+                d["parameters"] = json.loads(d["parameters_json"])
+                return d
+        return {
+            "version_tag": config.DEFAULT_STRATEGY_VERSION,
+            "parameters": {
+                "min_intraday_score": config.MIN_INTRADAY_ALERT_SCORE,
+                "min_volume_ratio": 1.3,
+                "max_spread_pct": 0.65,
+                "sl_atr_multiplier": 0.9,
+                "tp1_rr_multiplier": 1.6,
+                "tp2_rr_multiplier": 2.8,
+                "require_above_vwap_for_strong_buy": True,
+            },
+        }
+
+    def backup_database(self, backup_path: Optional[Path | str] = None) -> Path:
+        """Creates a transactionally consistent online backup of the SQLite database."""
+        config.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        if backup_path is None:
+            stamp = datetime.now(WIB).strftime("%Y%m%d_%H%M%S")
+            target = config.BACKUP_DIR / f"agent_memory_backup_{stamp}.db"
+        else:
+            target = Path(backup_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+        with sqlite3.connect(str(self.db_path)) as src_conn:
+            with sqlite3.connect(str(target)) as dst_conn:
+                src_conn.backup(dst_conn)
+        return target
+
+    def restore_database(self, backup_path: Path | str) -> None:
+        """Restores the SQLite database from a backup file safely."""
+        src = Path(backup_path)
+        if not src.exists():
+            raise FileNotFoundError(f"Backup file not found: {src}")
+        with sqlite3.connect(str(src)) as src_conn:
+            with sqlite3.connect(str(self.db_path)) as dst_conn:
+                src_conn.backup(dst_conn)

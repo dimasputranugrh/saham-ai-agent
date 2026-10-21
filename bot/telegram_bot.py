@@ -19,8 +19,12 @@ from agents.team import (
     evaluate_portfolio_sell_signals,
     generate_intraday_scanner_alert,
     generate_morning_dsu_report,
+    get_performance_dashboard_report,
+    get_ticker_memory_report,
 )
+from memory.learning_loop import LearningLoopOrchestrator
 from analyzer.technical import analyze_ticker_quant
+from broker.stockbit import capture_stockbit_portfolio, execute_stockbit_order
 
 logging.basicConfig(
     format="%(asctime)s - [%(levelname)s] %(name)s: %(message)s",
@@ -83,6 +87,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/beli <KODE> <HARGA>` — Lapor kalau Bos sudah beli (contoh: `/beli BBCA 5250`) biar diingatkan kapan jual!\n"
         "• `/pegang` — Cek saham yang sedang Bos pegang: sudah waktunya jual atau belum\n"
         "• `/jual <KODE>` — Hapus saham dari pantauan jual kalau sudah laku\n"
+        "• `/sb_beli <KODE> <LOT> <HARGA>` — Eksekusi Beli otomatis di Stockbit (contoh: `/sb_beli BBCA 1 5250`)\n"
+        "• `/sb_jual <KODE> <LOT> <HARGA>` — Eksekusi Jual otomatis di Stockbit (contoh: `/sb_jual BBCA 1 5450`)\n"
+        "• `/sb_saldo` — Potret Portofolio & Saldo RDN Stockbit Anda sekarang\n"
+        "• `/evaluasi` — Lihat rapor akurasi, Win Rate, Expectancy, & Self-Learning AI\n"
+        "• `/memori <KODE>` — Lihat ingatan & pelajaran historis AI pada saham tertentu\n"
         "• `/watchlist` — Lihat / tambah / hapus daftar saham pantauan\n\n"
         "💬 _Silakan langsung coba ketik `/dsu` atau `/cek BBCA` sekarang!_"
     )
@@ -236,6 +245,121 @@ async def cmd_jual(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"ℹ️ Saham *{norm.replace('.JK', '')}* belum ada di catatan `/pegang`.", parse_mode=ParseMode.MARKDOWN)
 
 
+async def cmd_sb_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Memotret Portofolio & Saldo RDN Stockbit di belakang layar dan mengirim fotonya ke Telegram."""
+    _auto_register_chat_id(update.effective_chat.id)
+    wait_msg = await update.message.reply_text("🤖 _Sedang membuka Stockbit Anda di belakang layar & memotret Portofolio..._", parse_mode=ParseMode.MARKDOWN)
+    ok, caption, img_path = await capture_stockbit_portfolio()
+    await wait_msg.delete()
+    if ok and img_path and img_path.exists():
+        with open(img_path, "rb") as photo_file:
+            await update.message.reply_photo(photo=photo_file, caption=caption, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await _send_safe_markdown(update.message, caption)
+
+
+async def cmd_sb_beli(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Eksekusi Beli otomatis ke Stockbit + otomatis masuk pantauan jual Hendra & Arif."""
+    _auto_register_chat_id(update.effective_chat.id)
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "🛒 *Cara Beli Otomatis ke Stockbit:*\n"
+            "Ketik: `/sb_beli <KODE> <JUMLAH_LOT> <HARGA>`\n"
+            "Contoh: `/sb_beli BBCA 1 5250` _(Beli BBCA 1 Lot di harga Rp 5.250)_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    ticker_raw = context.args[0]
+    try:
+        lots = int(context.args[1])
+        price = float(context.args[2].replace(".", "").replace(",", ""))
+    except ValueError:
+        await update.message.reply_text("⚠️ Format salah. Contoh: `/sb_beli BBCA 1 5250`", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    wait_msg = await update.message.reply_text(
+        f"🤖 *Robot sedang masuk ke Stockbit untuk BELI {ticker_raw.upper()} ({lots} Lot @ Rp {price:,.0f})...*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    ok, caption, img_path = await execute_stockbit_order("BUY", ticker_raw, lots, price)
+    await wait_msg.delete()
+
+    if ok:
+        # Otomatis daftarkan ke pantauan portofolio Hendra & Arif!
+        norm = config.normalize_ticker(ticker_raw)
+        snap = await asyncio.to_thread(analyze_ticker_quant, norm)
+        tp1 = snap.take_profit_1 if snap and snap.take_profit_1 > price else round(price * 1.04)
+        tp2 = snap.take_profit_2 if snap and snap.take_profit_2 > tp1 else round(price * 1.08)
+        sl = snap.stop_loss if snap and snap.stop_loss < price else round(price * 0.96)
+        portfolio = config.load_portfolio()
+        portfolio[norm] = {
+            "buy_price": price,
+            "lots": lots,
+            "tp1": tp1,
+            "tp2": tp2,
+            "sl": sl,
+            "bought_at": dt.datetime.now(pytz.timezone(config.TIMEZONE)).strftime("%Y-%m-%d %H:%M WIB"),
+        }
+        config.save_portfolio(portfolio)
+
+    if ok and img_path and img_path.exists():
+        with open(img_path, "rb") as photo_file:
+            await update.message.reply_photo(photo=photo_file, caption=caption, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await _send_safe_markdown(update.message, caption)
+
+
+async def cmd_sb_jual(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Eksekusi Jual otomatis ke Stockbit."""
+    _auto_register_chat_id(update.effective_chat.id)
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "💰 *Cara Jual Otomatis ke Stockbit:*\n"
+            "Ketik: `/sb_jual <KODE> <JUMLAH_LOT> <HARGA>`\n"
+            "Contoh: `/sb_jual BBCA 1 5450` _(Jual BBCA 1 Lot di harga Rp 5.450)_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    ticker_raw = context.args[0]
+    try:
+        lots = int(context.args[1])
+        price = float(context.args[2].replace(".", "").replace(",", ""))
+    except ValueError:
+        await update.message.reply_text("⚠️ Format salah. Contoh: `/sb_jual BBCA 1 5450`", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    wait_msg = await update.message.reply_text(
+        f"🤖 *Robot sedang masuk ke Stockbit untuk JUAL {ticker_raw.upper()} ({lots} Lot @ Rp {price:,.0f})...*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    ok, caption, img_path = await execute_stockbit_order("SELL", ticker_raw, lots, price)
+    await wait_msg.delete()
+
+    if ok and img_path and img_path.exists():
+        with open(img_path, "rb") as photo_file:
+            await update.message.reply_photo(photo=photo_file, caption=caption, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await _send_safe_markdown(update.message, caption)
+
+
+async def cmd_evaluasi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _auto_register_chat_id(update.effective_chat.id)
+    mode = context.args[0].upper() if context.args else None
+    wait_msg = await update.message.reply_text("📊 _Mengevaluasi hasil prediksi historis & menghitung metrik performa strategi..._", parse_mode=ParseMode.MARKDOWN)
+    report = await asyncio.to_thread(get_performance_dashboard_report, mode)
+    await wait_msg.delete()
+    await _send_safe_markdown(update.message, report)
+
+
+async def cmd_memori(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _auto_register_chat_id(update.effective_chat.id)
+    ticker = context.args[0] if context.args else "TLKM"
+    report = await asyncio.to_thread(get_ticker_memory_report, ticker)
+    await _send_safe_markdown(update.message, report)
+
+
 async def handle_free_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -279,10 +403,20 @@ async def scheduled_market_close(context: ContextTypes.DEFAULT_TYPE):
     chat_id = config.TELEGRAM_CHAT_ID
     if not chat_id or chat_id.startswith("masukkan_"):
         return
-    logger.info("Menjalankan Evaluasi Penutupan Pasar...")
+    logger.info("Menjalankan Evaluasi Penutupan Pasar & Self-Learning Loop...")
+    orchestrator = LearningLoopOrchestrator()
+    await asyncio.to_thread(orchestrator.run_evaluation_and_learning_cycle)
     _, report = await asyncio.to_thread(generate_intraday_scanner_alert, 0)
+    perf_summary = await asyncio.to_thread(get_performance_dashboard_report)
     close_header = "🔔 *EVALUASI PENUTUPAN PASAR SORE (CLOSING MARKET)*\nBerikut posisi akhir & peluang JJS / Swing untuk besok:\n\n"
-    await _send_safe_markdown(context.bot, close_header + report, chat_id=chat_id)
+    await _send_safe_markdown(context.bot, close_header + report + "\n\n" + perf_summary, chat_id=chat_id)
+
+
+async def scheduled_learning_evaluation(context: ContextTypes.DEFAULT_TYPE):
+    """Menjalankan siklus evaluasi hasil prediksi & pembaruan strategy_lessons secara idempoten."""
+    logger.info("Menjalankan siklus evaluasi prediksi & pembelajaran strategi otomatis...")
+    orchestrator = LearningLoopOrchestrator()
+    await asyncio.to_thread(orchestrator.run_evaluation_and_learning_cycle)
 
 
 def start_telegram_bot():
@@ -303,6 +437,13 @@ def start_telegram_bot():
     app.add_handler(CommandHandler("pegang", cmd_pegang))
     app.add_handler(CommandHandler("portofolio", cmd_pegang))
     app.add_handler(CommandHandler("jual", cmd_jual))
+    app.add_handler(CommandHandler("sb_saldo", cmd_sb_saldo))
+    app.add_handler(CommandHandler("sb_portofolio", cmd_sb_saldo))
+    app.add_handler(CommandHandler("sb_beli", cmd_sb_beli))
+    app.add_handler(CommandHandler("sb_jual", cmd_sb_jual))
+    app.add_handler(CommandHandler("evaluasi", cmd_evaluasi))
+    app.add_handler(CommandHandler("performa", cmd_evaluasi))
+    app.add_handler(CommandHandler("memori", cmd_memori))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_free_chat))
 
@@ -330,7 +471,14 @@ def start_telegram_bot():
                 name=f"intraday_scan_{sh:02d}_{sm:02d}",
             )
 
-        # 3. Evaluasi Penutupan Pasar (Default 16:15 WIB)
+        # 4. Siklus Evaluasi Prediksi & Self-Learning Otomatis (12:05 WIB istirahat siang & 16:30 WIB setelah tutup pasar)
+        for lh, lm in [(12, 5), (16, 30)]:
+            job_queue.run_daily(
+                scheduled_learning_evaluation,
+                time=dt.time(hour=lh, minute=lm, tzinfo=wib),
+                days=(1, 2, 3, 4, 5),
+                name=f"learning_eval_{lh:02d}_{lm:02d}",
+            )
         close_h, close_m = [int(x) for x in config.MARKET_CLOSE_TIME.split(":")]
         job_queue.run_daily(
             scheduled_market_close,
