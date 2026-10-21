@@ -82,13 +82,16 @@ def classify_effort(text: str, task: str = "ask") -> tuple[str, str]:
 
     low = raw.lower()
     score = 0
-    if any(k in low for k in HARD_KEYWORDS):
-        score += 2
+    hard_hits = sum(1 for k in HARD_KEYWORDS if k in low)
+    if hard_hits:
+        score += 2 + (1 if hard_hits >= 2 else 0)
     if any(k in low for k in EASY_KEYWORDS):
         score -= 2
+    if "cara kerja" in low or "jelaskan" in low:
+        score += 1
     if len(raw) > 280:
         score += 1
-    elif len(raw) < 70:
+    elif len(raw) < 70 and not hard_hits:
         score -= 1
     if task == "upgrade":
         score += 1  # mengubah kode butuh ketelitian lebih
