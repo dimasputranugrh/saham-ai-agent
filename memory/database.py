@@ -101,6 +101,13 @@ class MemoryDatabase:
                     (2, "multi_ai_panel_registry_and_votes", now_wib_iso()),
                 )
 
+            if 3 not in applied:
+                self._migration_v3_news_and_conversation_memory(conn)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+                    (3, "sector_news_investigations_and_conversation_knowledge_log", now_wib_iso()),
+                )
+
     def _migration_v1(self, conn: sqlite3.Connection) -> None:
         conn.executescript(
             """
@@ -835,3 +842,187 @@ class MemoryDatabase:
                 )
                 updated += 1
             return updated
+
+    def _migration_v3_news_and_conversation_memory(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            -- 8. SECTOR NEWS INVESTIGATIONS (Menyimpan hasil investigasi & perbandingan puluhan artikel berita)
+            CREATE TABLE IF NOT EXISTS sector_news_investigations (
+                investigation_id TEXT PRIMARY KEY,
+                captured_at_wib TEXT NOT NULL,
+                sector_key TEXT NOT NULL,
+                sector_label TEXT NOT NULL,
+                tickers_json TEXT NOT NULL,
+                articles_compared_count INTEGER NOT NULL DEFAULT 0,
+                media_sources_json TEXT NOT NULL,
+                positive_signals INTEGER NOT NULL DEFAULT 0,
+                negative_signals INTEGER NOT NULL DEFAULT 0,
+                catalyst_direction TEXT NOT NULL,
+                causal_logic TEXT NOT NULL,
+                top_articles_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sector_news_key_time
+                ON sector_news_investigations(sector_key, captured_at_wib DESC);
+
+            -- 9. CONVERSATION & KNOWLEDGE LOG (Menyimpan semua arahan Bos, percakapan, & prinsip analisis)
+            CREATE TABLE IF NOT EXISTS conversation_knowledge_log (
+                knowledge_id TEXT PRIMARY KEY,
+                created_at_wib TEXT NOT NULL,
+                category TEXT NOT NULL,
+                source TEXT NOT NULL,
+                user_message TEXT NOT NULL,
+                ai_lesson_extracted TEXT NOT NULL,
+                related_tickers_json TEXT DEFAULT '[]',
+                is_permanent_rule INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_conv_knowledge_time
+                ON conversation_knowledge_log(is_permanent_rule DESC, created_at_wib DESC);
+            """
+        )
+        now_iso = now_wib_iso()
+        initial_rules = [
+            (
+                str(uuid.uuid4()),
+                now_iso,
+                "STRATEGI_MULTI_HORIZON",
+                "DISKUSI_BOS_DIMAS",
+                "Analisis tidak hanya untuk scalping harian, tetapi juga untuk investasi masa depan (Swing mingguan/bulanan) lintas seluruh sektor BEI.",
+                "WAJIB membedakan 2 horizon peluang: (1) Scalping Cepat (Intraday 15m/VWAP/Volume) dan (2) Masa Depan / Swing (Tren Harian & Katalis Berita Sektor).",
+                json.dumps(["ALL_IDX"]),
+                1,
+            ),
+            (
+                str(uuid.uuid4()),
+                now_iso,
+                "INVESTIGASI_BERITA_MULTI_SUMBER",
+                "DISKUSI_BOS_DIMAS",
+                "Jangan terpaku pada 1 atau 2 artikel berita saja; wajib membandingkan banyak artikel dari berbagai media setiap beberapa jam sekali.",
+                "Setiap analisis wajib menggabungkan perbandingan puluhan artikel dari banyak media keuangan (Kontan, Bisnis, CNBC, Investor.id, Detik, dll.) dan mencari konsensus.",
+                json.dumps(["ALL_IDX"]),
+                1,
+            ),
+            (
+                str(uuid.uuid4()),
+                now_iso,
+                "HUKUM_SEBAB_AKIBAT_SEKTORAL",
+                "DISKUSI_BOS_DIMAS",
+                "Contoh rokok: jika cukai rokok mau naik maka saham rokok (HMSP, GGRM, WIIM) tertekan/turun; jika cukai ditahan/batal naik maka saham rokok naik. Harus jeli di semua sektor.",
+                "Gunakan logika sebab-akibat sektoral: Cukai Rokok -> HMSP/GGRM/WIIM; BI Rate -> BBCA/BBRI/BMRI/BBNI; Harga Batu Bara/Minyak -> ADRO/PTBA/ITMG/MEDC; Emas/Nikel -> ANTM/MDKA/AMMN/BRMS; Insentif PPN -> BSDE/CTRA/SMRA; Daya Beli/Makan Bergizi -> ICBP/INDF/AMRT/JPFA/CPIN.",
+                json.dumps(["HMSP.JK", "GGRM.JK", "WIIM.JK", "BBCA.JK", "ADRO.JK", "ANTM.JK", "ICBP.JK", "BSDE.JK"]),
+                1,
+            ),
+            (
+                str(uuid.uuid4()),
+                now_iso,
+                "PANEL_5_AI_DAN_EVALUASI_MINGGUAN",
+                "DISKUSI_BOS_DIMAS",
+                "Gunakan 5 AI gratis lintas perusahaan (Google Gemini 3.6, OpenAI 120B via Groq, NVIDIA Nemotron 550B via OpenRouter, Alibaba Qwen 3.8 via Groq, dan Quant Bayesian) + 1 Hakim Ketua, lalu beri rapor mingguan AI terbaik vs terburuk.",
+                "Setiap keputusan beli/tahan harus melalui persentase voting 5 AI (% Works) dan dievaluasi akurasinya setiap minggu agar AI yang jelek bisa diganti.",
+                json.dumps(["ALL_IDX"]),
+                1,
+            ),
+        ]
+        for row in initial_rules:
+            conn.execute(
+                """
+                INSERT INTO conversation_knowledge_log (
+                    knowledge_id, created_at_wib, category, source,
+                    user_message, ai_lesson_extracted, related_tickers_json, is_permanent_rule
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                row,
+            )
+
+    def save_sector_news_investigations(self, sector_results: list[dict[str, Any]]) -> int:
+        """Menyimpan hasil investigasi perbandingan berita 7 sektor ke database agar AI terus belajar."""
+        now_iso = now_wib_iso()
+        saved = 0
+        with self.connect() as conn:
+            for s in sector_results:
+                conn.execute(
+                    """
+                    INSERT INTO sector_news_investigations (
+                        investigation_id, captured_at_wib, sector_key, sector_label,
+                        tickers_json, articles_compared_count, media_sources_json,
+                        positive_signals, negative_signals, catalyst_direction,
+                        causal_logic, top_articles_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        now_iso,
+                        str(s.get("sector_key", "GENERAL")),
+                        str(s.get("label", "")),
+                        json.dumps(s.get("tickers", []), ensure_ascii=False),
+                        int(s.get("articles_compared_count", 0)),
+                        json.dumps(s.get("media_sources", []), ensure_ascii=False),
+                        int(s.get("positive_signals", 0)),
+                        int(s.get("negative_signals", 0)),
+                        str(s.get("catalyst_direction", "NETRAL")),
+                        str(s.get("causal_logic", "")),
+                        json.dumps(s.get("top_articles", []), ensure_ascii=False),
+                    ),
+                )
+                saved += 1
+        return saved
+
+    def save_conversation_knowledge(
+        self,
+        category: str,
+        source: str,
+        user_message: str,
+        ai_lesson_extracted: str,
+        related_tickers: Optional[list[str]] = None,
+        is_permanent_rule: bool = False,
+    ) -> str:
+        """Menyimpan percakapan, pertanyaan Bos, atau temuan baru ke database memori pengetahuan AI."""
+        kid = str(uuid.uuid4())
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO conversation_knowledge_log (
+                    knowledge_id, created_at_wib, category, source,
+                    user_message, ai_lesson_extracted, related_tickers_json, is_permanent_rule
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    kid,
+                    now_wib_iso(),
+                    category,
+                    source,
+                    user_message[:2000],
+                    ai_lesson_extracted[:2000],
+                    json.dumps(related_tickers or [], ensure_ascii=False),
+                    1 if is_permanent_rule else 0,
+                ),
+            )
+        return kid
+
+    def get_recent_knowledge_and_sector_news(self, ticker: Optional[str] = None, limit: int = 5) -> dict[str, Any]:
+        """Mengambil aturan permanen Bos, riwayat percakapan penting, dan investigasi berita sektor terbaru dari database."""
+        with self.connect() as conn:
+            rules = conn.execute(
+                """
+                SELECT category, user_message, ai_lesson_extracted, created_at_wib
+                FROM conversation_knowledge_log
+                ORDER BY is_permanent_rule DESC, created_at_wib DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+            news_rows = conn.execute(
+                """
+                SELECT sector_key, sector_label, articles_compared_count, catalyst_direction, causal_logic, captured_at_wib
+                FROM sector_news_investigations
+                ORDER BY captured_at_wib DESC
+                LIMIT 7
+                """
+            ).fetchall()
+
+        return {
+            "aturan_dan_percakapan_tersimpan": [dict(r) for r in rules],
+            "investigasi_berita_sektor_terakhir": [dict(n) for n in news_rows],
+        }

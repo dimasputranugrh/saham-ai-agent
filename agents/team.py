@@ -96,6 +96,10 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
     snapshots = scan_watchlist_quant(watchlist)
     news_list = fetch_market_news_indonesia(max_items=12)
     sector_news_radar = scan_all_sectors_news_and_catalysts(articles_per_sector=5)
+    try:
+        orchestrator.db.save_sector_news_investigations(sector_news_radar)
+    except Exception:
+        pass
     wib_now = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%A, %d %b %Y - %H:%M WIB")
 
     top_picks = snapshots[:4]
@@ -555,9 +559,13 @@ def chat_with_ai_team(user_message: str) -> str:
         snaps = scan_watchlist_quant(watchlist[:6])
         mentioned_snapshots = [s.to_dict() for s in snaps[:4]]
 
+    orchestrator = LearningLoopOrchestrator()
+    knowledge_ctx = orchestrator.db.get_recent_knowledge_and_sector_news(limit=6)
+
     ai_text = _generate_with_gemini(
         contents=(
             f"Pesan dari Bos: {user_message}\n\n"
+            f"Memori Pengetahuan, Aturan Bos & Investigasi Berita Sektor dari Database:\n{json.dumps(knowledge_ctx, ensure_ascii=False)}\n\n"
             f"Data Kuantitatif Real-Time Saham Terkait:\n{json.dumps(mentioned_snapshots, ensure_ascii=False)}"
         ),
         system_instruction=(
@@ -569,6 +577,17 @@ def chat_with_ai_team(user_message: str) -> str:
         temperature=0.3,
     )
     if ai_text:
+        try:
+            orchestrator.db.save_conversation_knowledge(
+                category="TANYA_JAWAB_TELEGRAM",
+                source="CHAT_BOS",
+                user_message=user_message,
+                ai_lesson_extracted=ai_text[:500],
+                related_tickers=[str(s.get("ticker", "")) for s in mentioned_snapshots[:3]],
+                is_permanent_rule=False,
+            )
+        except Exception:
+            pass
         return ai_text
 
     if mentioned_snapshots:
@@ -732,6 +751,10 @@ def generate_sectoral_news_catalyst_report() -> str:
 
     snaps = scan_watchlist_quant(candidate_tickers[:6])
     orchestrator = LearningLoopOrchestrator()
+    try:
+        orchestrator.db.save_sector_news_investigations(sector_radar)
+    except Exception:
+        pass
     sector_stock_picks = []
     for s in snaps[:4]:
         try:
