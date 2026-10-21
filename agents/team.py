@@ -99,8 +99,8 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             "   - 🛒 *Beli di Harga Berapa:* (pakai angka `entry_low` - `entry_high`)\n"
             "   - 💰 *Jual Ambil Untung (Cuan) di Harga Berapa:* (pakai angka `take_profit_1` dan `take_profit_2`)\n"
             "   - 🛑 *Rem Darurat (Jual Rugi kalau turun ke):* (pakai angka `stop_loss` supaya uang Bos nggak nyangkut)\n"
-            "   - ⏰ *Jam Berapa Harus Beli:* (jelaskan jamnya dengan santai)\n"
-            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih 1 perintah paling jelas hari ini: saham apa nomor 1 yang harus dibeli, jam berapa, dan kenapa.\n\n"
+            "   - ⏰ *Jam Berapa Harus Beli & Jam Berapa Harus Jual:* (gunakan `best_execution_window` untuk jam beli dan `best_sell_window` untuk kapan/jam berapa harus jual)\n"
+            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih 1 perintah paling jelas hari ini: saham apa nomor 1 yang harus dibeli, jam berapa belinya, dan kapan/jam berapa jualnya.\n\n"
             "ATURAN KERAS:\n"
             "- DILARANG MENGARANG ANGKA HARGA! Gunakan 100% angka Rupiah dari JSON.\n"
             "- Gunakan bahasa santai, akrab, pakai perumpamaan sehari-hari (diskon, borong, rem darurat, uang jajan), rapi untuk layar HP Telegram."
@@ -156,6 +156,7 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             f"   • 🎯 *Target TP1 / TP2:* {_fmt_rp(s.take_profit_1, s.is_idx)} / {_fmt_rp(s.take_profit_2, s.is_idx)}",
             f"   • 🛑 *Cut Loss (SL):* < {_fmt_rp(s.stop_loss, s.is_idx)} (R/R 1:{s.reward_to_risk})",
             f"   • ⏰ *Jam Beli:* {s.best_execution_window}",
+            f"   • 🔔 *Kapan/Jam Jual:* {s.best_sell_window}",
         ])
 
     lines.extend([
@@ -206,7 +207,7 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         "   - 🛒 *Harga Beli (Cicil/Serok):* `entry_low` sampai `entry_high`\n"
         "   - 💰 *Target Jual Untung (Ambil Cuan):* `take_profit_1` (target dekat) & `take_profit_2` (target agak jauh)\n"
         "   - 🛑 *Rem Darurat (Wajib Jual kalau turun tembus):* `stop_loss` (jelaskan biar modal Bos aman nggak nyangkut)\n"
-        "4. 🎯 *Arif (Kesimpulan & Jam Beli)*: Tegas bilang ke Bos: **BELI SEKARANG**, **TUNGGU AGAK TURUN DIKIT**, atau **JANGAN DIBELI DULU**, beserta **JAM BERAPA** waktu terbaik buka aplikasi sahamnya!"
+        "4. 🎯 *Arif (Kesimpulan Jam Beli & Jam Jual)*: Tegas bilang ke Bos: **BELI SEKARANG**, **TUNGGU AGAK TURUN DIKIT**, atau **JANGAN DIBELI DULU**, beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
     )
     ai_text = _generate_with_gemini(
         contents=f"Berikan laporan analisis 4 karyawan AI untuk saham {code}:\n{json.dumps(payload, ensure_ascii=False)}",
@@ -257,8 +258,9 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         f"• 🛑 *Batas Cut Loss (SL):* *< {_fmt_rp(snap.stop_loss, snap.is_idx)}* ({((snap.stop_loss - snap.entry_high)/snap.entry_high*100):.1f}%)",
         f"• ⚖️ *Reward/Risk Ratio:* 1 : {snap.reward_to_risk}",
         "",
-        "🎯 *ARIF (Rekomendasi Jam Eksekusi):*",
-        f"⏰ *{snap.best_execution_window}*",
+        "🎯 *ARIF (Rekomendasi Jam Beli & Jam Jual):*",
+        f"• ⏰ *Jam Beli:* {snap.best_execution_window}",
+        f"• 🔔 *Waktu/Jam Jual:* {snap.best_sell_window}",
     ])
     return "\n".join(lines)
 
@@ -301,10 +303,85 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
             f"   • 💰 *Jual Untung (Cuan) di:* *{_fmt_rp(s.take_profit_1, s.is_idx)}* (+{tp1_pct:.1f}%) atau *{_fmt_rp(s.take_profit_2, s.is_idx)}*",
             f"   • 🛑 *Rem Darurat (Jual kalau turun ke):* *< {_fmt_rp(s.stop_loss, s.is_idx)}* ({sl_pct:.1f}%)",
             f"   • ⏰ *Kapan Beli:* {s.best_execution_window}",
+            f"   • 🔔 *Kapan Jual:* {s.best_sell_window}",
         ])
 
-    lines.append("\n💡 _Ketik `/cek KODE` (contoh: `/cek BBCA`) kalau Bos mau penjelasan bahasa bayi lengkap dari 4 karyawan AI._")
+    # Cek juga apakah ada saham yang sedang dipegang Bos yang sudah waktunya dijual!
+    sell_alerts = evaluate_portfolio_sell_signals()
+    if sell_alerts:
+        lines.extend(["\n━━━━━━━━━━━━━━━━━━━━━━", sell_alerts])
+
+    lines.append("\n💡 _Ketik `/beli KODE HARGA` (contoh: `/beli BBCA 5250`) kalau Bos sudah beli, nanti Hendra & Arif yang pantau kapan harus jual!_")
     return qualified, "\n".join(lines)
+
+
+def evaluate_portfolio_sell_signals(force_all: bool = False) -> str:
+    """
+    Mengecek daftar saham yang sedang dipegang Bos (dari perintah /beli)
+    dan memberi tahu apakah JAM SEGINI sudah waktunya JUAL atau TAHAN DULU.
+    """
+    portfolio = config.load_portfolio()
+    if not portfolio:
+        if force_all:
+            return (
+                "💼 *Dompet Saham Bos Masih Kosong*\n\n"
+                "Kalau Bos habis beli saham, lapor ke kami dengan ketik:\n"
+                "👉 `/beli KODE HARGA_BELI` (Contoh: `/beli BBCA 5250`)\n\n"
+                "Nanti setiap jam bursa, *Hendra & Arif* akan otomatis memantau harganya dan memberi tahu di Telegram kalau sudah waktunya **JUAL AMBIL UNTUNG** atau **REM DARURAT**!"
+            )
+        return ""
+
+    wib_now = datetime.now(pytz.timezone("Asia/Jakarta"))
+    hour_float = wib_now.hour + wib_now.minute / 60.0
+    lines = ["💼 *PANTAUAN WAKTU JUAL SAHAM BOS:*"]
+    urgent_count = 0
+
+    for norm_ticker, info in portfolio.items():
+        snap = analyze_ticker_quant(norm_ticker)
+        if not snap:
+            continue
+        code = norm_ticker.replace(".JK", "")
+        buy_price = float(info.get("buy_price", snap.current_price))
+        tp1 = float(info.get("tp1", snap.take_profit_1))
+        tp2 = float(info.get("tp2", snap.take_profit_2))
+        sl = float(info.get("sl", snap.stop_loss))
+        cur = snap.current_price
+        pnl_pct = ((cur - buy_price) / buy_price * 100.0) if buy_price > 0 else 0.0
+
+        if cur >= tp2:
+            urgent_count += 1
+            status_jual = "🚀 *WAKTUNYA JUAL SEKARANG (Target Cuan Besar Tercapai!)*"
+            saran = f"Harga sudah tembus Target 2 ({_fmt_rp(tp2, snap.is_idx)}). Segera buka aplikasi dan jual sekarang buat amankan untung *+{pnl_pct:.1f}%*!"
+        elif cur >= tp1:
+            urgent_count += 1
+            status_jual = "💰 *WAKTUNYA JUAL AMBIL UNTUNG (Target 1 Tercapai!)*"
+            saran = f"Harga sudah sampai target jual ({_fmt_rp(tp1, snap.is_idx)}). Boleh jual semua sekarang (untung *+{pnl_pct:.1f}%*) atau jual separuh!"
+        elif pnl_pct >= 2.5 and 15.25 <= hour_float <= 16.0:
+            urgent_count += 1
+            status_jual = "🔔 *JUAL SORE SEBELUM PASAR TUTUP (Amankan Uang Jajan!)*"
+            saran = f"Sekarang sudah jam sore menjelang tutup pasar dan Bos sudah untung *+{pnl_pct:.1f}%*. Boleh bungkus untungnya sekarang (jam 15:30-15:45 WIB)!"
+        elif cur <= sl:
+            urgent_count += 1
+            status_jual = "🛑 *PERINGATAN REM DARURAT! WAKTUNYA JUAL RUGI DIKIT*"
+            saran = f"Harga turun ke {_fmt_rp(cur, snap.is_idx)} (melewati batas aman {_fmt_rp(sl, snap.is_idx)}). Jika sudah jam 15:30-15:45 WIB masih di bawah angka ini, wajib jual dulu biar modal tidak nyangkut dalam."
+        else:
+            status_jual = "⏳ *TAHAN / SIMPAN DULU (Belum Waktunya Jual)*"
+            saran = (
+                f"Pasang antrian jual otomatis di *{_fmt_rp(tp1, snap.is_idx)}*. "
+                f"Biasanya harga naik kencang di jam *09:15-10:00 WIB* atau *14:30-15:45 WIB*. "
+                f"Batas rem darurat di *{_fmt_rp(sl, snap.is_idx)}*."
+            )
+
+        lines.extend([
+            f"\n📌 *{code}* (Modal Beli: {_fmt_rp(buy_price, snap.is_idx)} ➡️ Sekarang: *{_fmt_rp(cur, snap.is_idx)}* | *{pnl_pct:+.2f}%*)",
+            f"   • Status: {status_jual}",
+            f"   • Panduan Arif: {saran}",
+        ])
+
+    if not force_all and urgent_count == 0:
+        return ""
+    lines.append("\n_Ketik `/jual KODE` (contoh: `/jual BBCA`) jika sahamnya sudah Bos jual._")
+    return "\n".join(lines)
 
 
 def chat_with_ai_team(user_message: str) -> str:

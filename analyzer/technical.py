@@ -136,6 +136,7 @@ class TechnicalSnapshot:
     quant_score: int
     action_label: str
     best_execution_window: str
+    best_sell_window: str
     signals_detected: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -396,15 +397,26 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
             best_window = "Sesi 2 Sore (14:00 - 15:30 WIB) untuk Momentum / JJS (Jajan Sore)"
         else:
             best_window = "Pantau Pembukaan Sesi 1 (09:15 - 09:45 WIB) atau Sesi 2 (14:00 - 15:30 WIB)"
+        best_sell = (
+            f"Pasang Jual Otomatis di TP1 (Rp {tp1:,.0f}). Biasanya tercapai jam 10:45-11:30 WIB, "
+            "jam 14:30-15:45 WIB, atau besok pagi jam 09:05-09:30 WIB saat lonjakan buka pasar."
+        ).replace(",", ".")
     elif score >= 62:
         action_label = "BUY ON WEAKNESS (Antri di Area Support / VWAP)"
         best_window = "Tunggu koreksi wajar jam 10:15 - 11:15 WIB atau 13:45 - 14:30 WIB di Area Beli"
+        best_sell = (
+            f"Simpan 1-4 hari (Swing) dan pasang antrian jual di TP1 (Rp {tp1:,.0f}). "
+            "Jam jual terbaik biasanya pagi hari (09:10 - 10:00 WIB) saat harga memantul naik, "
+            f"atau wajib jual jam 15:30-15:45 WIB jika harga turun jebol Rem Darurat (< Rp {stop_loss:,.0f})."
+        ).replace(",", ".")
     elif score >= 48:
         action_label = "WAIT & SEE (Tunggu Breakout / Konfirmasi Volume)"
         best_window = "Jangan buru-buru masuk; tunggu tembus VWAP/Resistance dengan volume"
+        best_sell = "Jika sudah terlanjur punya, manfaatkan kenaikan jam 09:15-10:00 WIB untuk jual di dekat Resistance."
     else:
         action_label = "AVOID / HINDARI DULU (Tekanan Jual Masih Dominan)"
         best_window = "Hindari beli baru; tunggu struktur harga membaik"
+        best_sell = f"Jika masih pegang saham ini dan jam 15:30 WIB harganya di bawah Rp {stop_loss:,.0f}, segera jual agar tidak nyangkut."
 
     return TechnicalSnapshot(
         ticker=ticker.upper(),
@@ -448,6 +460,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         quant_score=score,
         action_label=action_label,
         best_execution_window=best_window,
+        best_sell_window=best_sell,
         signals_detected=signals,
     )
 

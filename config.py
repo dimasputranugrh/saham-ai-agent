@@ -18,6 +18,27 @@ MARKET_CLOSE_TIME = os.getenv("MARKET_CLOSE_TIME", "16:15").strip()
 MIN_INTRADAY_ALERT_SCORE = int(os.getenv("MIN_INTRADAY_ALERT_SCORE", "68"))
 
 WATCHLIST_FILE = BASE_DIR / "data" / "watchlist.json"
+PORTFOLIO_FILE = BASE_DIR / "data" / "portfolio.json"
+
+
+def load_portfolio() -> dict[str, dict]:
+    """Memuat daftar saham yang sedang dipegang/dibeli oleh Bos."""
+    PORTFOLIO_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if PORTFOLIO_FILE.exists():
+        try:
+            data = json.loads(PORTFOLIO_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return {}
+
+
+def save_portfolio(portfolio: dict[str, dict]) -> dict[str, dict]:
+    """Menyimpan daftar saham yang sedang dipegang oleh Bos."""
+    PORTFOLIO_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PORTFOLIO_FILE.write_text(json.dumps(portfolio, indent=2), encoding="utf-8")
+    return portfolio
 
 
 def normalize_ticker(ticker: str) -> str:
