@@ -21,14 +21,17 @@ on:
     - cron: '45 6 * * 1-5'
     # 15:15 WIB -> 08:15 UTC (Pantauan JJS / Sore)
     - cron: '15 8 * * 1-5'
-    # 16:15 WIB -> 09:15 UTC (Evaluasi Penutupan Pasar)
+    # 16:15 WIB -> 09:15 UTC (Evaluasi Penutupan Pasar & Self-Learning)
     - cron: '15 9 * * 1-5'
+
+permissions:
+  contents: write
 
 jobs:
   jalankan-karyawan-ai:
     runs-on: ubuntu-latest
     steps:
-      - name: Ambil Kode Aplikasi
+      - name: Ambil Kode Aplikasi & Database Memory
         uses: actions/checkout@v4
 
       - name: Siapkan Python 3.12
@@ -39,7 +42,7 @@ jobs:
       - name: Install Library Analisis Saham & AI
         run: pip install -r requirements.txt
 
-      - name: Jalankan Analisis & Kirim ke Telegram Bos
+      - name: Jalankan Analisis, Evaluasi Memori, & Kirim ke Telegram Bos
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -53,4 +56,15 @@ jobs:
             python cloud_runner.py close
           else
             python cloud_runner.py scan
+          fi
+
+      - name: Simpan Pembaruan Database Memory (agent_memory.db) ke GitHub
+        run: |
+          sqlite3 data/agent_memory.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
+          git config user.name "Saham AI Agent Bot"
+          git config user.email "bot@saham-ai-agent.local"
+          git add data/agent_memory.db data/watchlist.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(memory): auto-update persistent agent_memory.db from cloud run"
+            git push origin HEAD:main || true
           fi

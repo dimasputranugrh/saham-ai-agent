@@ -6,7 +6,10 @@ from agents.team import (
     chat_with_ai_team,
     generate_intraday_scanner_alert,
     generate_morning_dsu_report,
+    get_performance_dashboard_report,
+    get_ticker_memory_report,
 )
+from memory.learning_loop import LearningLoopOrchestrator
 
 
 def send_telegram_direct(text: str, chat_id: str | int | None = None):
@@ -58,6 +61,12 @@ def process_pending_telegram_messages():
                 parts = text.split()
                 ticker = parts[1] if len(parts) > 1 else "BBCA"
                 send_telegram_direct(analyze_single_stock_with_team(ticker), chat_id)
+            elif text.startswith("/evaluasi") or text.startswith("/performa"):
+                send_telegram_direct(get_performance_dashboard_report(), chat_id)
+            elif text.startswith("/memori"):
+                parts = text.split()
+                ticker = parts[1] if len(parts) > 1 else "TLKM"
+                send_telegram_direct(get_ticker_memory_report(ticker), chat_id)
             elif not text.startswith("/"):
                 send_telegram_direct(chat_with_ai_team(text), chat_id)
 
@@ -68,9 +77,17 @@ def process_pending_telegram_messages():
 
 
 def main():
-    # Proses dulu bila ada chat tertunda dari Bos
+    # 1. Jalankan siklus evaluasi hasil prediksi & pembelajaran sebelum analisis baru
+    orchestrator = LearningLoopOrchestrator()
+    try:
+        orchestrator.run_evaluation_and_learning_cycle()
+    except Exception:
+        pass
+
+    # 2. Proses bila ada chat tertunda dari Bos di Telegram
     process_pending_telegram_messages()
 
+    # 3. Jalankan mode jadwal cron (dsu / scan / close)
     mode = sys.argv[1].lower() if len(sys.argv) > 1 else "dsu"
     if mode == "dsu":
         report = generate_morning_dsu_report()
@@ -80,8 +97,9 @@ def main():
         send_telegram_direct(report)
     elif mode == "close":
         _, report = generate_intraday_scanner_alert(0)
-        header = "🔔 *LAPORAN PENUTUPAN PASAR SORE (CLOSING)*\n"
-        send_telegram_direct(header + report)
+        perf_report = get_performance_dashboard_report()
+        header = "🔔 *LAPORAN PENUTUPAN PASAR SORE & SELF-LEARNING AI*\n"
+        send_telegram_direct(header + report + "\n\n" + perf_report)
 
 
 if __name__ == "__main__":
