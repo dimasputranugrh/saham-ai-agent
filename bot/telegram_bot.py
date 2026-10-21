@@ -20,6 +20,7 @@ from agents.team import (
     evaluate_portfolio_sell_signals,
     generate_intraday_scanner_alert,
     generate_morning_dsu_report,
+    generate_sectoral_news_catalyst_report,
     get_performance_dashboard_report,
     get_ticker_memory_report,
     get_weekly_ai_report,
@@ -411,6 +412,17 @@ async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_safe_markdown(update.message, reply)
 
 
+async def cmd_berita(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _auto_register_chat_id(update.effective_chat.id)
+    wait_msg = await update.message.reply_text(
+        "🌍 _Membandingkan puluhan artikel berita dari 7 Sektor Utama BEI (Rokok/Cukai, Bank, Energi, Tambang, Konsumer, Properti, Telko)..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
+    await wait_msg.delete()
+    await _send_safe_markdown(update.message, report)
+
+
 async def handle_free_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -480,6 +492,16 @@ async def scheduled_weekly_ai_report(context: ContextTypes.DEFAULT_TYPE):
     await _send_safe_markdown(context.bot, report, chat_id=chat_id)
 
 
+async def scheduled_sector_news_radar(context: ContextTypes.DEFAULT_TYPE):
+    """Memantau & membandingkan puluhan artikel berita lintas sektor setiap beberapa jam sekali."""
+    chat_id = config.TELEGRAM_CHAT_ID
+    if not chat_id or chat_id.startswith("masukkan_"):
+        return
+    logger.info("Menjalankan Radar Berita Lintas Sektor & Peluang Masa Depan otomatis...")
+    report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
+    await _send_safe_markdown(context.bot, report, chat_id=chat_id)
+
+
 def start_telegram_bot():
     token = config.TELEGRAM_BOT_TOKEN
     if not token or token.startswith("masukkan_"):
@@ -493,6 +515,8 @@ def start_telegram_bot():
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("dsu", cmd_dsu))
     app.add_handler(CommandHandler("scan", cmd_scan))
+    app.add_handler(CommandHandler("berita", cmd_berita))
+    app.add_handler(CommandHandler("sektor", cmd_berita))
     app.add_handler(CommandHandler("cek", cmd_cek))
     app.add_handler(CommandHandler("beli", cmd_beli))
     app.add_handler(CommandHandler("pegang", cmd_pegang))
@@ -560,6 +584,15 @@ def start_telegram_bot():
             days=(5,),
             name="weekly_ai_report_friday",
         )
+
+        # 6. Radar Berita Lintas 7 Sektor & Peluang Masa Depan (11:30 WIB Siang & 14:15 WIB Sesi 2)
+        for nh, nm in [(11, 30), (14, 15)]:
+            job_queue.run_daily(
+                scheduled_sector_news_radar,
+                time=dt.time(hour=nh, minute=nm, tzinfo=wib),
+                days=(1, 2, 3, 4, 5),
+                name=f"sector_news_radar_{nh:02d}_{nm:02d}",
+            )
 
     logger.info("🤖 Karyawan AI Saham siap bekerja! Menunggu perintah di Telegram & menjalankan jadwal harian...")
     app.run_polling(drop_pending_updates=True)

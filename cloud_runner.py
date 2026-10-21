@@ -9,6 +9,7 @@ from agents.team import (
     chat_with_ai_team,
     generate_intraday_scanner_alert,
     generate_morning_dsu_report,
+    generate_sectoral_news_catalyst_report,
     get_performance_dashboard_report,
     get_ticker_memory_report,
     get_weekly_ai_report,
@@ -62,6 +63,8 @@ def process_pending_telegram_messages():
             elif text.startswith("/scan"):
                 _, rep = generate_intraday_scanner_alert(0)
                 send_telegram_direct(rep, chat_id)
+            elif text.startswith("/berita") or text.startswith("/sektor"):
+                send_telegram_direct(generate_sectoral_news_catalyst_report(), chat_id)
             elif text.startswith("/cek"):
                 parts = text.split()
                 ticker = parts[1] if len(parts) > 1 else "BBCA"
@@ -111,6 +114,8 @@ def main():
     elif mode == "scan":
         _, report = generate_intraday_scanner_alert(0)
         send_telegram_direct(report)
+    elif mode == "news":
+        send_telegram_direct(generate_sectoral_news_catalyst_report())
     elif mode == "close":
         _, report = generate_intraday_scanner_alert(0)
         perf_report = get_performance_dashboard_report()

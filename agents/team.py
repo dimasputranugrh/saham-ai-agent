@@ -12,7 +12,11 @@ from agents.ai_panel import (
     run_5_ai_panel_consensus,
 )
 from analyzer.technical import TechnicalSnapshot, get_ihsg_overview, scan_watchlist_quant, analyze_ticker_quant
-from analyzer.news import fetch_market_news_indonesia, fetch_ticker_news
+from analyzer.news import (
+    fetch_market_news_indonesia,
+    fetch_ticker_news,
+    scan_all_sectors_news_and_catalysts,
+)
 from memory.learning_loop import LearningLoopOrchestrator
 from memory.performance import PerformanceAnalyzer
 
@@ -90,7 +94,8 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
 
     ihsg = get_ihsg_overview()
     snapshots = scan_watchlist_quant(watchlist)
-    news_list = fetch_market_news_indonesia(max_items=6)
+    news_list = fetch_market_news_indonesia(max_items=12)
+    sector_news_radar = scan_all_sectors_news_and_catalysts(articles_per_sector=5)
     wib_now = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%A, %d %b %Y - %H:%M WIB")
 
     top_picks = snapshots[:4]
@@ -144,6 +149,7 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             "waktu_rapat_wib": wib_now,
             "kondisi_ihsg": ihsg,
             "berita_pasar_hari_ini": news_list,
+            "radar_perbandingan_berita_7_sektor_bei": sector_news_radar,
             "top_kandidat_saham_kuantitatif_dan_memori": enriched_picks,
             "saham_rawan_koreksi": [s.to_dict() for s in avoid_list],
         }
@@ -152,15 +158,15 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             "meskipun di belakang layar Anda memakai perhitungan matematika canggih (VWAP, RSI, MACD, ATR) dan Database Memori Historis, "
             "SAAT MELAPOR KE BOS GUNAKAN 'BAHASA BAYI' / BAHASA SEHARI-HARI YANG SUPER GAMPANG DIPAHAMI ANAK KECIL!\n\n"
             "Peran 4 Karyawan AI:\n"
-            "1. 👨‍💻 *Budi (Si Pemantau Grafik & Bandar)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan juga bukti pendukung dan bukti penentang (risiko spread/volume), serta pengalaman dari `historical_memories` jika ada.\n"
-            "2. 👩‍💼 *Sari (Si Pemantau Berita)*: Ceritakan singkat ada kabar baik/buruk apa hari ini yang bikin harga saham bisa naik/turun.\n"
-            "3. 🛡️ *Hendra (Si Penjaga Dompet Bos)*: Kasih panduan super jelas:\n"
-            "   - 🛒 *Beli di Harga Berapa:* (pakai angka `entry_low` - `entry_high`)\n"
-            "   - 💰 *Jual Ambil Untung (Cuan) di Harga Berapa:* (pakai angka `take_profit_1` dan `take_profit_2` beserta estimasi return bersih setelah fee)\n"
-            "   - 🛑 *Rem Darurat / Pembatal Sinyal:* (pakai angka `stop_loss` dan `invalidation_conditions`)\n"
-            "   - 🎯 *Tingkat Keyakinan Terkalibrasi:* (gunakan `calibrated_confidence` & `confidence_basis`)\n"
-            "   - ⏰ *Jam Berapa Harus Beli & Jam Berapa Harus Jual:* (gunakan `best_execution_window` dan `best_sell_window`)\n"
-            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih keputusan tegas (`BUY` atau `WAIT` jika peluang/data belum cukup).\n\n"
+            "1. 👨‍💻 *Budi (Si Pemantau Grafik & Bandar)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan bukti pendukung, bukti penentang, serta hasil sidang 5 AI.\n"
+            "2. 👩‍💼 *Sari (Si Pemantau Berita & Peluang Lintas Sektor)*: Bandingkan BANYAK artikel dari `radar_perbandingan_berita_7_sektor_bei` (jangan cuma 1-2 artikel!). Jelaskan hukum sebab-akibat berita hari ini ke berbagai sektor (misal: kebijakan cukai rokok -> HMSP/GGRM/WIIM, suku bunga -> bank, harga emas/batu bara -> tambang, insentif -> properti/konsumer).\n"
+            "3. 🛡️ *Hendra (Si Penjaga Dompet Bos)*: Kasih panduan super jelas untuk:\n"
+            "   - ⚡ *Peluang Cepat (Scalping / Intraday Hari Ini)*\n"
+            "   - 🌱 *Peluang Masa Depan (Swing / Tabungan Saham Mingguan-Bulanan dari Sektor yang Punya Katalis Bagus)*\n"
+            "   - 🛒 *Beli di Harga Berapa:* (`entry_low` - `entry_high`)\n"
+            "   - 💰 *Jual Ambil Untung (Cuan) di Harga Berapa:* (`take_profit_1` & `take_profit_2` beserta return bersih setelah fee)\n"
+            "   - 🛑 *Rem Darurat / Pembatal Sinyal:* (`stop_loss` & `invalidation_conditions`)\n"
+            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih keputusan tegas (`BUY` atau `WAIT`) untuk jangka pendek (Scalping) dan jangka menengah/masa depan!\n\n"
             "ATURAN KERAS:\n"
             "- DILARANG MENGARANG ANGKA HARGA! Gunakan 100% angka Rupiah dari JSON.\n"
             "- Pisahkan fakta data nyata, interpretasi, dan asumsi biaya transaksi."
@@ -702,3 +708,107 @@ def swap_panel_ai_model(args: list[str]) -> str:
         )
     except Exception as e:
         return f"⚠️ Gagal mengganti AI: {e}"
+
+
+def generate_sectoral_news_catalyst_report() -> str:
+    """
+    Memindai puluhan artikel berita dari 7 Sektor Utama BEI (Rokok & Cukai, Bank, Energi/Batu Bara,
+    Tambang Emas/Logam, Konsumer/Ritel/Poultry, Properti/Otomotif, Telko/EBT),
+    membandingkan banyak sumber media, memetakan dampak sebab-akibat, dan mencari peluang:
+    1) ⚡ Scalping / Jangka Pendek
+    2) 🌱 Swing / Investasi Masa Depan (Mingguan-Bulanan)
+    """
+    wib_now = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%A, %d %b %Y - %H:%M WIB")
+    ihsg = get_ihsg_overview()
+    sector_radar = scan_all_sectors_news_and_catalysts(articles_per_sector=6)
+    total_articles = sum(s["articles_compared_count"] for s in sector_radar)
+
+    # Pilih emiten perwakilan dari 3 sektor paling aktif beritanya untuk dicek harga & tren nyatanya
+    candidate_tickers: list[str] = []
+    for sec in sector_radar[:4]:
+        for t in sec["tickers"][:2]:
+            if t not in candidate_tickers:
+                candidate_tickers.append(t)
+
+    snaps = scan_watchlist_quant(candidate_tickers[:6])
+    orchestrator = LearningLoopOrchestrator()
+    sector_stock_picks = []
+    for s in snaps[:4]:
+        try:
+            ctx = orchestrator.analyze_and_record_with_memory(
+                ticker=s.ticker,
+                snap=s,
+                ihsg_info=ihsg,
+                timeframe="15m",
+                horizon_bars=16,
+                horizon_minutes=240,
+                execution_mode=config.EXECUTION_MODE,
+            )
+            panel = run_5_ai_panel_consensus(
+                snap=s,
+                ihsg_info=ihsg,
+                mem_ctx=ctx,
+                db=orchestrator.db,
+                use_live_llm=False,
+            )
+            d = s.to_dict()
+            d["panel_5_ai"] = f"{panel['buy_count']}/{panel['total_ai']} AI Setuju ({panel['works_pct']:.1f}% Works)"
+            d["vonis_hakim"] = panel["verdict_label"]
+            sector_stock_picks.append(d)
+        except Exception:
+            sector_stock_picks.append(s.to_dict())
+
+    payload = {
+        "waktu_scan_wib": wib_now,
+        "total_artikel_dibandingkan": total_articles,
+        "kondisi_ihsg": ihsg,
+        "perbandingan_berita_7_sektor": sector_radar,
+        "analisis_harga_emiten_terdampak": sector_stock_picks,
+    }
+    sys_inst = (
+        "Anda adalah Tim Riset Lintas Sektor & Masa Depan (Sari, Budi, Hendra, Arif) untuk Bos yang pemula.\n"
+        "Tugas Anda adalah membandingkan BANYAK berita lintas sektor dari JSON `perbandingan_berita_7_sektor` "
+        "(seperti efek Cukai Rokok ke HMSP/GGRM/WIIM, Suku Bunga ke Bank, Harga Komoditas ke Tambang/Energi, Insentif ke Properti/Konsumer).\n"
+        "Gunakan 'BAHASA BAYI' yang gampang dipahami, namun tajam membaca peluang:\n"
+        "1. 📰 *Perbandingan Banyak Berita Lintas Sektor*: Sebutkan berapa total artikel & media yang dibandingkan, lalu jelaskan **Sebab ➡️ Akibat** pada tiap sektor penting.\n"
+        "2. ⚡ *Peluang Jangka Pendek (Scalping / Harian)*: Saham sektor mana yang hari ini sedang ramai diborong.\n"
+        "3. 🌱 *Peluang Masa Depan (Swing / Tabungan Mingguan-Bulanan)*: Saham sektor mana yang punya katalis berita bagus untuk disimpan beberapa minggu ke depan beserta harga Beli, Target Untung, dan Rem Daruratnya (100% dari angka JSON, DILARANG mengarang angka!)."
+    )
+    ai_text = _generate_with_gemini(
+        contents=f"Susun Laporan Radar Berita Lintas Sektor & Peluang Masa Depan:\n{json.dumps(payload, ensure_ascii=False)}",
+        system_instruction=sys_inst,
+        temperature=0.2,
+    )
+    if ai_text:
+        return ai_text
+
+    lines = [
+        "🌍 *RADAR BERITA LINTAS SEKTOR & PELUANG MASA DEPAN*",
+        f"🕒 _{wib_now}_ | 📚 *Membandingkan {total_articles} Artikel Media Keuangan*",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    for sec in sector_radar[:5]:
+        media_str = ", ".join(sec["media_sources"][:4]) or "Berbagai Media"
+        lines.extend([
+            f"\n*{sec['label']}*",
+            f"• 📊 *Arah Katalis:* *{sec['catalyst_direction']}* ({sec['articles_compared_count']} artikel dari _{media_str}_)",
+            f"• 🔗 *Hukum Sebab-Akibat:*\n{sec['causal_logic']}",
+        ])
+        for art in sec["top_articles"][:2]:
+            lines.append(f"  📰 _{art['title']}_ ({art['source']})")
+
+    if sector_stock_picks:
+        lines.extend([
+            "\n━━━━━━━━━━━━━━━━━━━━━━",
+            "🌱 *SAHAM SEKTORAL PILIHAN (SCALPING & MASA DEPAN):*",
+        ])
+        for sp in sector_stock_picks[:3]:
+            code = str(sp.get("ticker", "")).replace(".JK", "")
+            lines.extend([
+                f"\n📌 *{code}* — Harga: *Rp {sp.get('current_price', 0):,.0f}* | Tren Harian: *{sp.get('daily_trend', '')}*",
+                f"   • 🗳️ *Suara 5 AI:* {sp.get('panel_5_ai', '-')}",
+                f"   • 🛒 *Area Cicil Beli:* Rp {sp.get('entry_low', 0):,.0f} – Rp {sp.get('entry_high', 0):,.0f}",
+                f"   • 🎯 *Target Jual (TP1 / TP2):* Rp {sp.get('take_profit_1', 0):,.0f} / Rp {sp.get('take_profit_2', 0):,.0f}",
+                f"   • 🛑 *Rem Darurat (SL):* < Rp {sp.get('stop_loss', 0):,.0f}",
+            ])
+    return "\n".join(lines).replace(",", ".")

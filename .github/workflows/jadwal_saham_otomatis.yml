@@ -17,8 +17,12 @@ on:
     - cron: '15 2 * * 1-5'
     # 10:15 WIB -> 03:15 UTC (Pantauan Sesi 1)
     - cron: '15 3 * * 1-5'
+    # 11:30 WIB -> 04:30 UTC (Radar Berita 7 Sektor & Peluang Masa Depan Siang)
+    - cron: '30 4 * * 1-5'
     # 13:45 WIB -> 06:45 UTC (Pembukaan Sesi 2 Siang)
     - cron: '45 6 * * 1-5'
+    # 14:15 WIB -> 07:15 UTC (Radar Berita 7 Sektor & Peluang Masa Depan Sesi 2)
+    - cron: '15 7 * * 1-5'
     # 15:15 WIB -> 08:15 UTC (Pantauan JJS / Sore)
     - cron: '15 8 * * 1-5'
     # 16:15 WIB -> 09:15 UTC (Evaluasi Penutupan Pasar & Self-Learning)
@@ -56,6 +60,8 @@ jobs:
             python cloud_runner.py "${{ github.event.inputs.mode }}"
           elif [ "${{ github.event.schedule }}" = "15 1 * * 1-5" ]; then
             python cloud_runner.py dsu
+          elif [ "${{ github.event.schedule }}" = "30 4 * * 1-5" ] || [ "${{ github.event.schedule }}" = "15 7 * * 1-5" ]; then
+            python cloud_runner.py news
           elif [ "${{ github.event.schedule }}" = "15 9 * * 1-5" ]; then
             python cloud_runner.py close
           else
