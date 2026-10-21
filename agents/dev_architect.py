@@ -57,19 +57,62 @@ def _find_agy_binary() -> Optional[str]:
     return None
 
 
-def _call_local_agy_argon(prompt: str, allow_edits: bool = False, timeout_sec: int = 90) -> Optional[str]:
+HARD_KEYWORDS = [
+    "kenapa", "mengapa", "rancang", "desain", "arsitektur", "bug", "error", "debug",
+    "optimasi", "refactor", "bandingkan", "strategi", "mendalam", "evaluasi",
+    "backtest", "overfitting", "integrasi", "keamanan", "algoritma", "rumus", "fitur baru",
+]
+EASY_KEYWORDS = [
+    "apa itu", "di mana", "dimana", "file apa", "sebutkan", "daftar", "berapa",
+    "lokasi", "letak", "perintah apa", "ubah angka", "tambahkan saham", "hapus saham",
+]
+
+
+def classify_effort(text: str, task: str = "ask") -> tuple[str, str]:
     """
-    Memanggil Antigravity CLI (`agy`) asli dengan model `gemini-4-argon` saat berjalan di WSL lokal!
+    Menentukan tingkat berpikir Gemini 3.8 Flash untuk Telegram: low / medium / high.
+    Bos bisa memaksa dengan awalan kata: ringan / sedang / berat.
+    Mengembalikan (effort, teks_bersih).
     """
+    raw = text.strip()
+    first = raw.split(" ", 1)[0].lower() if raw else ""
+    manual = {"ringan": "low", "sedang": "medium", "berat": "high"}
+    if first in manual:
+        return manual[first], (raw.split(" ", 1)[1] if " " in raw else "")
+
+    low = raw.lower()
+    score = 0
+    if any(k in low for k in HARD_KEYWORDS):
+        score += 2
+    if any(k in low for k in EASY_KEYWORDS):
+        score -= 2
+    if len(raw) > 280:
+        score += 1
+    elif len(raw) < 70:
+        score -= 1
+    if task == "upgrade":
+        score += 1  # mengubah kode butuh ketelitian lebih
+
+    if score >= 2:
+        return "high", raw
+    if score <= -1:
+        return "low", raw
+    return "medium", raw
+
+
+def _call_local_agy(prompt: str, effort: str = "medium", timeout_sec: int = 120) -> tuple[Optional[str], str]:
+    """
+    Memanggil Antigravity CLI (`agy`) di WSL lokal dengan Gemini 3.8 Flash.
+    Gemini 4 Argon sengaja TIDAK dipakai dari Telegram — Argon khusus untuk Bos
+    saat prompt langsung di Antigravity CLI.
+    """
+    model_id = f"gemini-3.8-flash-{effort}"
     if os.getenv("GITHUB_ACTIONS") == "true":
-        return None
+        return None, model_id
     agy_bin = _find_agy_binary()
     if not agy_bin:
-        return None
-    cmd = [agy_bin, "--model", "gemini-4-argon"]
-    if allow_edits:
-        cmd.extend(["--mode", "accept-edits", "--dangerously-skip-permissions"])
-    cmd.extend(["-p", prompt])
+        return None, model_id
+    cmd = [agy_bin, "--model", model_id, "-p", prompt]
     try:
         res = subprocess.run(
             cmd,
@@ -79,23 +122,25 @@ def _call_local_agy_argon(prompt: str, allow_edits: bool = False, timeout_sec: i
             timeout=timeout_sec,
         )
         if res.returncode == 0 and res.stdout and res.stdout.strip():
-            return res.stdout.strip()
+            return res.stdout.strip(), model_id
     except Exception:
         pass
-    return None
+    return None, model_id
 
 
-def _call_architect_llm(system_prompt: str, user_prompt: str, temperature: float = 0.15) -> tuple[Optional[str], str]:
+def _call_architect_llm(
+    system_prompt: str, user_prompt: str, temperature: float = 0.15, effort: str = "medium"
+) -> tuple[Optional[str], str]:
     """
-    Memanggil otak AI Architect:
-    - Prioritas 0 (Saat di WSL Lokal): Antigravity CLI `gemini-4-argon`
+    Memanggil otak AI Architect untuk /agy dan /upgrade dari Telegram:
+    - Prioritas 0 (Laptop nyala / WSL): Antigravity CLI `gemini-3.8-flash-{low|medium|high}`
     - Prioritas 1 (Cloud / Fallback): Google `gemini-3.6-flash`
     - Prioritas 2 (Cloud / Fallback): OpenAI `openai/gpt-oss-120b` (via Groq)
     """
-    # 0. Jika di WSL Lokal dan binary `agy` tersedia, gunakan langsung `gemini-4-argon`!
-    agy_out = _call_local_agy_argon(f"{system_prompt}\n\n{user_prompt}", allow_edits=False, timeout_sec=60)
+    # 0. Laptop nyala: Gemini 3.8 Flash via Antigravity CLI, tingkat berpikir sesuai pertanyaan
+    agy_out, agy_model = _call_local_agy(f"{system_prompt}\n\n{user_prompt}", effort=effort)
     if agy_out:
-        return agy_out, "gemini-4-argon (via Antigravity CLI)"
+        return agy_out, f"{agy_model} (via Antigravity CLI)"
 
     # 1. Coba Gemini 3.6 Flash / 3 Flash Preview
     gem_key = config.GEMINI_API_KEY
@@ -208,6 +253,7 @@ def ask_project_architect(question: str, chat_id: int | str | None = None) -> st
         )
 
     mode_env = "☁️ GitHub Cloud" if os.getenv("GITHUB_ACTIONS") == "true" else "💻 WSL Lokal"
+    effort, question = classify_effort(question, task="ask")
     files_ctx = _select_relevant_files(question, max_files=5)
 
     sys_prompt = (
@@ -222,11 +268,11 @@ def ask_project_architect(question: str, chat_id: int | str | None = None) -> st
         f"Isi file kode yang relevan:\n{json.dumps(files_ctx, ensure_ascii=False)}"
     )
 
-    ans, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.2)
+    ans, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.2, effort=effort)
     if ans:
         return (
             f"🤖 *Antigravity Architect ({mode_env})*\n"
-            f"🧠 _Model: `{used_model}`_\n"
+            f"🧠 _Model: `{used_model}` | Tingkat berpikir: `{effort}`_\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             f"{ans}"
         )
@@ -269,6 +315,7 @@ def upgrade_project_code(instruction: str, chat_id: int | str | None = None) -> 
         )
 
     mode_env = "☁️ GitHub Cloud" if os.getenv("GITHUB_ACTIONS") == "true" else "💻 WSL Lokal"
+    effort, instruction = classify_effort(instruction, task="upgrade")
     files_ctx = _select_relevant_files(instruction, max_files=4)
 
     sys_prompt = (
@@ -294,7 +341,7 @@ def upgrade_project_code(instruction: str, chat_id: int | str | None = None) -> 
         f"Isi file-file project saat ini:\n{json.dumps(files_ctx, ensure_ascii=False)}"
     )
 
-    raw_resp, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.1)
+    raw_resp, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.1, effort=effort)
     plan = _parse_json_object(raw_resp or "")
     if not plan or not isinstance(plan.get("edits"), list) or not plan["edits"]:
         return (
