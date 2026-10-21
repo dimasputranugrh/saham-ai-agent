@@ -1,0 +1,56 @@
+name: Jadwal Otomatis Karyawan AI Saham (WIB)
+
+on:
+  # Bisa dijalankan manual kapan saja lewat tombol "Run workflow" di GitHub
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Pilih laporan (dsu / scan / close)'
+        required: true
+        default: 'dsu'
+
+  # Jadwal Otomatis Senin-Jumat (Konversi UTC ke WIB = UTC + 7 jam)
+  schedule:
+    # 08:15 WIB -> 01:15 UTC (DSU Pagi Sebelum Bursa Buka)
+    - cron: '15 1 * * 1-5'
+    # 09:15 WIB -> 02:15 UTC (Sinyal Pembukaan Sesi 1)
+    - cron: '15 2 * * 1-5'
+    # 10:15 WIB -> 03:15 UTC (Pantauan Sesi 1)
+    - cron: '15 3 * * 1-5'
+    # 13:45 WIB -> 06:45 UTC (Pembukaan Sesi 2 Siang)
+    - cron: '45 6 * * 1-5'
+    # 15:15 WIB -> 08:15 UTC (Pantauan JJS / Sore)
+    - cron: '15 8 * * 1-5'
+    # 16:15 WIB -> 09:15 UTC (Evaluasi Penutupan Pasar)
+    - cron: '15 9 * * 1-5'
+
+jobs:
+  jalankan-karyawan-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil Kode Aplikasi
+        uses: actions/checkout@v4
+
+      - name: Siapkan Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Library Analisis Saham & AI
+        run: pip install -r requirements.txt
+
+      - name: Jalankan Analisis & Kirim ke Telegram Bos
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python cloud_runner.py "${{ github.event.inputs.mode }}"
+          elif [ "${{ github.event.schedule }}" = "15 1 * * 1-5" ]; then
+            python cloud_runner.py dsu
+          elif [ "${{ github.event.schedule }}" = "15 9 * * 1-5" ]; then
+            python cloud_runner.py close
+          else
+            python cloud_runner.py scan
+          fi
