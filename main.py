@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import threading
@@ -14,14 +15,48 @@ console = Console()
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
-        self.end_headers()
-        self.wfile.write(b'{"status":"ok","service":"saham-ai-agent"}')
+        if self.path == "/healthz" or "health" in self.path:
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok","service":"saham-ai-agent"}')
+            return
+
+        if self.path.startswith("/api"):
+            try:
+                from bot.dashboard import get_dashboard_summary
+                data = json.dumps(get_dashboard_summary()).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(f'{{"error":"{str(e)}"}}'.encode())
+                return
+
+        # Render Web Dashboard Monitoring Saham untuk Bos Dimas
+        try:
+            from bot.dashboard import render_dashboard_html
+            html_content = render_dashboard_html().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_content)))
+            self.end_headers()
+            self.wfile.write(html_content)
+        except Exception as e:
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(f'{{"status":"ok","service":"saham-ai-agent","note":"{str(e)}"}}'.encode())
 
     def do_HEAD(self):
         self.send_response(200)
-        self.send_header("Content-type", "application/json")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
 
     def log_message(self, format, *args):

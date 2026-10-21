@@ -78,6 +78,16 @@ def process_pending_telegram_messages():
                     "💬 _Atau langsung ketik pertanyaan biasa tanpa garis miring `/`, nanti Tim AI langsung menjawab!_"
                 )
                 send_telegram_direct(help_msg, chat_id)
+            elif text.startswith("/dashboard") or text.startswith("/web"):
+                dash_msg = (
+                    "📊 *DASHBOARD MONITORING HARGA SAHAM*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "Bos bisa memantau rekap harga, target TP/SL, dan sinyal 5 AI secara real-time lewat browser:\n\n"
+                    "🌐 *Link Dashboard:*\n"
+                    "https://saham-ai-agent.onrender.com/\n\n"
+                    "✨ _Tampilan mobile-friendly, auto-refresh tiap 60 detik, dan bisa dibuka dari HP atau laptop!_"
+                )
+                send_telegram_direct(dash_msg, chat_id)
             elif text.startswith("/dsu"):
                 send_telegram_direct(generate_morning_dsu_report(), chat_id)
             elif text.startswith("/scan"):

@@ -85,6 +85,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 🛡️ *Hendra* — Manajer Risiko (Area Beli, TP, Cut Loss, Jam Masuk)\n"
         "• 🎯 *Arif* — Kepala Riset & Pemimpin DSU\n\n"
         "⌨️ *Perintah yang Tersedia:*\n"
+        "• `/dashboard` — Link website monitoring & rekap harga saham (bisa dibuka di browser HP)\n"
         "• `/dsu` — Panggil rapat DSU pagi sekarang juga\n"
         "• `/scan` — Cari saham yang bagus dibeli *jam segini*\n"
         "• `/berita` — Radar perbandingan berita 7 sektor & peluang Masa Depan (Swing)\n"
@@ -103,6 +104,19 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💬 _Atau langsung ketik pertanyaan biasa tanpa garis miring `/`, nanti Tim AI langsung menjawab!_"
     )
     await _send_safe_markdown(update.message, welcome)
+
+
+async def cmd_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mengirim link dashboard monitoring web ke Bos."""
+    msg = (
+        "📊 *DASHBOARD MONITORING HARGA SAHAM*\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Bos bisa memantau rekap harga, target TP/SL, dan sinyal 5 AI secara real-time lewat browser di link berikut:\n\n"
+        "🌐 *Link Dashboard:*\n"
+        "https://saham-ai-agent.onrender.com/\n\n"
+        "✨ _Tampilan ramah HP, auto-refresh tiap 60 detik, dan bisa dibuka dari mana saja!_"
+    )
+    await _send_safe_markdown(update.message, msg)
 
 
 async def cmd_dsu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -514,6 +528,8 @@ def start_telegram_bot():
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("menu", cmd_start))
     app.add_handler(CommandHandler("bantuan", cmd_start))
+    app.add_handler(CommandHandler("dashboard", cmd_dashboard))
+    app.add_handler(CommandHandler("web", cmd_dashboard))
     app.add_handler(CommandHandler("dsu", cmd_dsu))
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CommandHandler("berita", cmd_berita))
