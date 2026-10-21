@@ -14,15 +14,15 @@ from memory.database import MemoryDatabase
 FREE_REPLACEMENT_MODELS_CATALOG = [
     ("gemini-3.6-flash", "Google Gemini 3.6 Flash (Cepat & Tajam untuk Intraday)"),
     ("groq:openai/gpt-oss-120b", "OpenAI GPT-OSS 120B via Groq (Model Raksasa 120 Miliar Parameter - Gratis)"),
+    ("openrouter:nvidia/nemotron-3-ultra-550b-a55b:free", "NVIDIA Nemotron 3 Ultra 550B via OpenRouter (Raksasa 550B - 100% Gratis)"),
     ("groq:qwen/qwen3.8-27b", "Alibaba Qwen 3.8 27B via Groq (Kuat di Matematika & Tren Asia - Gratis)"),
-    ("gemma-4-26b-a4b-it", "Google Gemma 4 26B MoE Open-Weights (Kuat di Volume & Pola)"),
     ("quant-bayesian-v1", "Mesin Matematika Quant + Memori Bayesian (Murni Rumus & Statistik)"),
+    ("openrouter:minimax/minimax-m3.1-flash:free", "MiniMax M3.1 Flash via OpenRouter (100% Gratis)"),
+    ("openrouter:nvidia/nemotron-3.5-lightning:free", "NVIDIA Nemotron 3.5 Lightning via OpenRouter (100% Gratis)"),
+    ("gemma-4-26b-a4b-it", "Google Gemma 4 26B MoE Open-Weights (Kuat di Volume & Pola)"),
     ("gemini-3-flash-preview", "Google Gemini 3 Flash Preview (Analitis & Kritis)"),
     ("gemini-3.5-flash-lite", "Google Gemini 3.5 Flash Lite (Ringan, Konservatif & Stabil)"),
     ("groq:openai/gpt-oss-20b", "OpenAI GPT-OSS 20B via Groq (Super Cepat & Ringan - Gratis)"),
-    ("cerebras:llama-3.3-70b", "Meta Llama 3.3 70B via Cerebras (Gratis jika isi CEREBRAS_API_KEY)"),
-    ("mistral:mistral-small-latest", "Mistral Small 3.1 via Mistral AI (Gratis jika isi MISTRAL_API_KEY)"),
-    ("openrouter:deepseek/deepseek-chat:free", "DeepSeek V3 via OpenRouter (Gratis jika isi OPENROUTER_API_KEY)"),
 ]
 
 

@@ -642,9 +642,9 @@ class MemoryDatabase:
             ),
             (
                 "AI_3",
-                "AI-3 (Gemma-4 OpenMoE Bandar)",
-                "gemini",
-                "gemma-4-26b-a4b-it",
+                "AI-3 (NVIDIA Nemotron 550B Bandar)",
+                "openrouter",
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "Fokus membaca akumulasi bandar, kekuatan aliran dana (volume spike), dan struktur candle.",
                 0.25,
             ),
