@@ -403,9 +403,6 @@ def render_live_office_html():
             <button onclick="setCameraView('auditor')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1.5">
                 🛡️ Tim Risiko
             </button>
-            <button onclick="setCameraView('lounge')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1.5">
-                ☕ Coffee Lounge
-            </button>
         </div>
     </div>
 
@@ -656,35 +653,7 @@ def render_live_office_html():
                 scene.add(ring);
             }}
 
-            // Lounge Bar Kopi Modern & Tanaman Hias Kurva
-            buildOrganicLounge();
-        }}
-
-        function buildOrganicLounge() {{
-            // Meja Bar Kopi Melengkung
-            const bar = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 1.8, 32, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.4 }}));
-            bar.rotation.y = Math.PI / 2;
-            bar.position.set(14.5, 0.9, -9);
-            bar.castShadow = true;
-            bar.receiveShadow = true;
-            scene.add(bar);
-
-            // Dispenser Galon Air Melengkung Halus
-            const dispStand = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.6, 24), new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.3 }}));
-            dispStand.position.set(14.8, 2.6, -11.5);
-            scene.add(dispStand);
-
-            const waterBottle = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.3, 0.85, 24), new THREE.MeshStandardMaterial({{ color: 0x0284c7, transparent: true, opacity: 0.65, roughness: 0.1 }}));
-            waterBottle.position.set(14.8, 3.8, -11.5);
-            scene.add(waterBottle);
-
-            // Sofa Santai Lengkung (Curved Modern Sofa)
-            const sofa = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 1.2, 32, 1, false, Math.PI * 0.2, Math.PI * 0.6), new THREE.MeshStandardMaterial({{ color: 0x334155, roughness: 0.8 }}));
-            sofa.position.set(13.8, 0.6, -3);
-            sofa.castShadow = true;
-            scene.add(sofa);
-
-            // Tanaman Kantor Tropis Berdaun Daun Bulat Halus (Bukan Dodecahedron)
+            // Tanaman Hias Sudut Ruangan
             buildOrganicPlant(14.5, 0, 9);
             buildOrganicPlant(-14.5, 0, 11);
         }}
@@ -1080,8 +1049,6 @@ def render_live_office_html():
                 gsapCameraTo(-8.5, 4.5, 3.5, -4.5, 1.3, 0.5);
             }} else if (viewName === 'auditor') {{
                 gsapCameraTo(8.5, 4.5, 3.5, 4.5, 1.3, 0.5);
-            }} else if (viewName === 'lounge') {{
-                gsapCameraTo(16, 3.8, -5, 14.5, 1.4, -7);
             }}
         }}
 
