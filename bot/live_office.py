@@ -8,300 +8,6 @@ import pytz
 import config
 
 
-def generate_character_svg(agent: dict) -> str:
-    """
-    Menghasilkan ilustrasi SVG animasi vektor berkualitas tinggi:
-    Karyawan AI duduk di meja kantor dengan dual monitor, keyboard, cangkir kopi,
-    dan tangan yang mengetik secara aktif (jika sibuk) atau santai ngopi (jika kosong/idle).
-    """
-    aid = agent["id"]
-    status = agent["status"]
-    is_busy = status in ["WORKING", "DECIDING", "AUDITING"]
-    shirt_color = agent.get("theme_color", "#06b6d4")
-    accent_color = agent.get("accent_color", "#22d3ee")
-
-    # Custom styling accessories per agent
-    has_headphone = aid in ["AI_1", "AI_3"]
-    has_glasses = aid in ["AI_2", "AI_5", "SARI"]
-    has_tie = aid in ["AI_2", "HENDRA"]
-    is_judge = aid == "ARIF"
-
-    # Animasi CSS class
-    type_l_class = "animate-typing-l" if is_busy else ""
-    type_r_class = "animate-typing-r" if is_busy else ""
-    screen_chart_class = "animate-chart-glow" if is_busy else "opacity-50"
-    head_class = "animate-head-bob" if is_busy else "animate-head-idle"
-
-    # SVG Chart bars untuk monitor utama
-    chart_bars = ""
-    bar_heights = [18, 28, 22, 35, 30, 42, 38, 50, 45, 58] if is_busy else [20, 22, 21, 24, 20, 22, 23, 21, 22, 20]
-    for i, h in enumerate(bar_heights):
-        x = 96 + (i * 7)
-        y = 115 - h
-        color = "#34d399" if i % 3 != 1 else "#f87171"
-        chart_bars += f'<rect x="{x}" y="{y}" width="5" height="{h}" rx="1" fill="{color}" opacity="0.85" />'
-
-    # Side monitor terminal lines
-    term_lines = ""
-    for i in range(5):
-        y = 80 + (i * 7)
-        w = 30 + ((i * 11) % 25)
-        term_lines += f'<rect x="180" y="{y}" width="{w}" height="3" rx="1.5" fill="{accent_color}" opacity="0.75" />'
-
-    # Aksesori khusus meja
-    desk_accessory = ""
-    if is_judge:
-        # Palu Hakim (Gavel) di atas meja
-        desk_accessory = """
-        <!-- Palu Sidang Hakim Arif -->
-        <g transform="translate(255, 142)">
-            <rect x="0" y="8" width="22" height="6" rx="2" fill="#d97706" />
-            <rect x="8" y="0" width="6" height="22" rx="2" fill="#92400e" transform="rotate(-25 11 11)" />
-            <rect x="2" y="20" width="20" height="5" rx="1.5" fill="#78350f" />
-        </g>
-        """
-    else:
-        # Cangkir kopi kantor dengan asap mengepul
-        steam_anim = """
-        <path d="M 270 134 Q 272 128 269 122 Q 267 116 271 110" stroke="#94a3b8" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6">
-            <animate attributeName="d" values="M 270 134 Q 272 128 269 122 Q 267 116 271 110; M 270 134 Q 267 128 271 122 Q 274 116 269 110; M 270 134 Q 272 128 269 122 Q 267 116 271 110" dur="2.5s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.2;0.7;0.2" dur="2.5s" repeatCount="indefinite" />
-        </path>
-        """ if not is_busy else ""
-
-        desk_accessory = f"""
-        <!-- Cangkir Kopi Karyawan -->
-        <g transform="translate(262, 138)">
-            <rect x="0" y="4" width="16" height="18" rx="3" fill="#f8fafc" />
-            <rect x="2" y="7" width="12" height="12" rx="2" fill="#3b82f6" opacity="0.3" />
-            <!-- Gagang cangkir -->
-            <path d="M 16 7 Q 22 10 16 17" stroke="#f8fafc" stroke-width="2.5" fill="none" stroke-linecap="round" />
-            {steam_anim}
-        </g>
-        """
-
-    # Headset jika ada
-    headphone_svg = ""
-    if has_headphone:
-        headphone_svg = """
-        <!-- Headset Gaming / Call Center -->
-        <path d="M 184 72 A 16 16 0 0 1 216 72" stroke="#38bdf8" stroke-width="3" fill="none" />
-        <rect x="181" y="68" width="5" height="12" rx="2" fill="#0284c7" />
-        <rect x="214" y="68" width="5" height="12" rx="2" fill="#0284c7" />
-        <path d="M 215 76 Q 220 84 212 87" stroke="#38bdf8" stroke-width="1.5" fill="none" />
-        <circle cx="211" cy="87" r="2" fill="#38bdf8" />
-        """
-
-    # Kacamata jika ada
-    glasses_svg = ""
-    if has_glasses:
-        glasses_svg = """
-        <!-- Kacamata Smart -->
-        <g stroke="#38bdf8" stroke-width="1.5" fill="rgba(56, 189, 248, 0.15)">
-            <rect x="190" y="72" width="8" height="6" rx="2" />
-            <rect x="202" y="72" width="8" height="6" rx="2" />
-            <line x1="198" y1="75" x2="202" y2="75" />
-            <line x1="187" y1="74" x2="190" y2="74" />
-            <line x1="210" y1="74" x2="213" y2="74" />
-        </g>
-        """
-
-    # Dasi jika ada
-    tie_svg = ""
-    if has_tie:
-        tie_svg = """
-        <!-- Dasi Formal -->
-        <polygon points="199,94 201,94 202,112 200,116 198,112" fill="#ef4444" />
-        """
-
-    # Jubah Hakim Arif jika Hakim
-    robe_collar = ""
-    if is_judge:
-        robe_collar = """
-        <!-- Kerah Jubah Hakim Emas -->
-        <polygon points="192,92 200,105 208,92" fill="#fbbf24" opacity="0.9" />
-        <circle cx="200" cy="107" r="2.5" fill="#f59e0b" />
-        """
-
-    # Posisi tangan (mengetik vs santai)
-    if is_busy:
-        hands_svg = f"""
-        <!-- Tangan Mengetik di Keyboard (Aktif Bekerja) -->
-        <g class="{type_l_class}">
-            <!-- Lengan Kiri -->
-            <path d="M 178 114 Q 165 132 154 148" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
-            <!-- Tangan Kiri di atas keyboard -->
-            <ellipse cx="154" cy="148" rx="5" ry="4" fill="#fed7aa" />
-        </g>
-        <g class="{type_r_class}">
-            <!-- Lengan Kanan -->
-            <path d="M 222 114 Q 235 132 246 148" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
-            <!-- Tangan Kanan di atas keyboard/mouse -->
-            <ellipse cx="246" cy="148" rx="5" ry="4" fill="#fed7aa" />
-        </g>
-        """
-    else:
-        hands_svg = f"""
-        <!-- Tangan Santai (Mode Standby) -->
-        <!-- Lengan Kiri rileks di paha / meja -->
-        <path d="M 178 114 Q 170 135 165 150" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
-        <ellipse cx="165" cy="150" rx="5" ry="4" fill="#fed7aa" />
-        <!-- Lengan Kanan memegang meja / dekat kopi -->
-        <path d="M 222 114 Q 238 132 250 146" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
-        <ellipse cx="250" cy="146" rx="5" ry="4" fill="#fed7aa" />
-        """
-
-    svg = f"""
-    <svg viewBox="0 0 400 220" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" class="select-none overflow-hidden rounded-xl">
-        <defs>
-            <!-- Gradasi Meja Kayu Premium -->
-            <linearGradient id="deskWood_{aid}" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#334155" />
-                <stop offset="15%" stop-color="#1e293b" />
-                <stop offset="100%" stop-color="#0f172a" />
-            </linearGradient>
-
-            <!-- Gradasi Cahaya Layar Monitor -->
-            <linearGradient id="monitorGlow_{aid}" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#0284c7" stop-opacity="0.25" />
-                <stop offset="100%" stop-color="{shirt_color}" stop-opacity="0.05" />
-            </linearGradient>
-
-            <!-- Bayangan Halus -->
-            <filter id="softShadow_{aid}" x="-10%" y="-10%" width="120%" height="120%">
-                <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
-            </filter>
-        </defs>
-
-        <!-- 1. Dinding & Latar Belakang Ruang Kantor Modern -->
-        <rect width="400" height="220" fill="#090d16" />
-        <rect x="0" y="160" width="400" height="60" fill="#050811" />
-        <!-- Garis partisi kantor minimalis -->
-        <line x1="0" y1="160" x2="400" y2="160" stroke="#1e293b" stroke-width="1.5" />
-        <!-- Lampu LED Ambient Backlight -->
-        <ellipse cx="200" cy="95" rx="140" ry="70" fill="{accent_color}" opacity="0.08" />
-
-        <!-- 2. Kursi Ergonomis Kantor (Mesh Swivel Chair) -->
-        <g filter="url(#softShadow_{aid})">
-            <!-- Sandaran Kepala Kursi -->
-            <rect x="182" y="32" width="36" height="16" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
-            <!-- Sandaran Punggung Kursi Mesh -->
-            <path d="M 166 48 Q 200 45 234 48 L 230 115 Q 200 120 170 115 Z" fill="#1e293b" stroke="#334155" stroke-width="2" />
-            <line x1="172" y1="65" x2="228" y2="65" stroke="#334155" stroke-dasharray="3,3" />
-            <line x1="174" y1="85" x2="226" y2="85" stroke="#334155" stroke-dasharray="3,3" />
-            <line x1="176" y1="105" x2="224" y2="105" stroke="#334155" stroke-dasharray="3,3" />
-        </g>
-
-        <!-- 3. Karakter Karyawan AI (Wujud Orang Sedang Duduk) -->
-        <g id="employee-body" class="{head_class}">
-            <!-- Pundak & Badan Karyawan -->
-            <path d="M 162 115 Q 200 95 238 115 L 244 150 L 156 150 Z" fill="{shirt_color}" />
-            <!-- Detail Jahitan Baju / Jas -->
-            <path d="M 188 98 L 200 118 L 212 98" stroke="#ffffff" stroke-width="1.5" opacity="0.3" fill="none" />
-            {robe_collar}
-            {tie_svg}
-
-            <!-- Leher -->
-            <rect x="194" y="86" width="12" height="12" rx="2" fill="#fed7aa" />
-
-            <!-- Kepala / Wajah Orang -->
-            <ellipse cx="200" cy="74" rx="16" ry="18" fill="#fed7aa" />
-
-            <!-- Rambut Stylist Kantor -->
-            <path d="M 182 72 Q 183 54 200 54 Q 217 54 218 72 Q 208 64 200 64 Q 192 64 182 72 Z" fill="#1e293b" />
-
-            <!-- Mata Karyawan -->
-            <ellipse cx="194" cy="73" rx="2" ry="2.5" fill="#0f172a" />
-            <ellipse cx="206" cy="73" rx="2" ry="2.5" fill="#0f172a" />
-            <!-- Kacamata / Headphone jika ada -->
-            {glasses_svg}
-            {headphone_svg}
-
-            <!-- Senyum ramah -->
-            <path d="M 197 81 Q 200 84 203 81" stroke="#ea580c" stroke-width="1.2" fill="none" stroke-linecap="round" />
-        </g>
-
-        <!-- 4. Tangan Karyawan -->
-        {hands_svg}
-
-        <!-- 5. Meja Kerja Kantor (Perspective 3D Top Slabs) -->
-        <g filter="url(#softShadow_{aid})">
-            <!-- Permukaan Atas Meja -->
-            <polygon points="50,150 350,150 375,185 25,185" fill="url(#deskWood_{aid})" stroke="#475569" stroke-width="1" />
-            <!-- Sisi Depan Meja -->
-            <polygon points="25,185 375,185 375,195 25,195" fill="#0f172a" stroke="#334155" stroke-width="1" />
-            <!-- Kaki Meja Besi Minimalis -->
-            <rect x="40" y="195" width="8" height="25" fill="#334155" />
-            <rect x="352" y="195" width="8" height="25" fill="#334155" />
-        </g>
-
-        <!-- 6. Peralatan Kantor di Atas Meja -->
-        <!-- Monitor Utama (Menampilkan Chart Saham / Analisis) -->
-        <g transform="translate(85, 55)" filter="url(#softShadow_{aid})">
-            <!-- Kaki Monitor -->
-            <rect x="40" y="70" width="8" height="28" fill="#475569" />
-            <rect x="30" y="96" width="28" height="4" rx="2" fill="#334155" />
-            <!-- Bingkai Monitor -->
-            <rect x="0" y="0" width="88" height="70" rx="4" fill="#0f172a" stroke="#334155" stroke-width="2" />
-            <!-- Layar Monitor Nyala -->
-            <rect x="3" y="3" width="82" height="64" rx="2" fill="#020617" />
-            <!-- Chart Candlestick / Candlestick SVG di dalam Monitor -->
-            <g class="{screen_chart_class}">
-                {chart_bars}
-                <!-- Garis Tren EMA -->
-                <path d="M 98 105 Q 120 90 140 98 T 160 70" stroke="#38bdf8" stroke-width="1.5" fill="none" />
-            </g>
-            <!-- Logo Brand Monitor & LED power -->
-            <circle cx="44" cy="67.5" r="1" fill="#38bdf8" />
-        </g>
-
-        <!-- Monitor Kedua (Side Monitor Vertikal / Terminal Kode) -->
-        <g transform="translate(178, 62)" filter="url(#softShadow_{aid})">
-            <rect x="0" y="0" width="46" height="62" rx="3" fill="#0f172a" stroke="#334155" stroke-width="1.5" />
-            <rect x="2" y="2" width="42" height="58" rx="2" fill="#030712" />
-            <!-- Baris teks data mengalir -->
-            {term_lines}
-        </g>
-
-        <!-- Keyboard RGB Mekanikal -->
-        <g transform="translate(142, 155)">
-            <rect x="0" y="0" width="70" height="20" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1" />
-            <!-- Tombol keyboard menyala RGB -->
-            <line x1="4" y1="5" x2="66" y2="5" stroke="{accent_color}" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.8" />
-            <line x1="4" y1="10" x2="66" y2="10" stroke="{shirt_color}" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.8" />
-            <line x1="4" y1="15" x2="66" y2="15" stroke="{accent_color}" stroke-width="1.5" stroke-dasharray="5,2" opacity="0.8" />
-        </g>
-
-        <!-- Mouse & Mousepad -->
-        <g transform="translate(225, 156)">
-            <rect x="0" y="0" width="28" height="22" rx="3" fill="#0f172a" stroke="#334155" stroke-width="0.8" />
-            <ellipse cx="14" cy="11" rx="5" ry="8" fill="#334155" />
-            <line x1="14" y1="5" x2="14" y2="9" stroke="{accent_color}" stroke-width="1" />
-        </g>
-
-        <!-- Nameplate Meja Kantor Karyawan -->
-        <g transform="translate(48, 172)">
-            <polygon points="0,0 75,0 72,10 -3,10" fill="#0f172a" stroke="#e2e8f0" stroke-width="0.6" />
-            <text x="6" y="8" font-family="'JetBrains Mono', monospace" font-size="6.5" font-weight="bold" fill="#f8fafc">{aid} • {agent['name'].split()[1] if len(agent['name'].split()) > 1 else agent['name']}</text>
-        </g>
-
-        <!-- Aksesori Tambahan (Palu Hakim / Cangkir Kopi) -->
-        {desk_accessory}
-
-        <!-- Status Pill Mengambang di Atas Kepala Karakter -->
-        <g transform="translate(145, 14)">
-            <rect x="0" y="0" width="110" height="18" rx="9" fill="#0f172a" stroke="{'#10b981' if is_busy else '#64748b'}" stroke-width="1.5" filter="url(#softShadow_{aid})" />
-            <circle cx="10" cy="9" r="3.5" fill="{'#10b981' if is_busy else '#94a3b8'}" class="{'animate-ping' if is_busy else ''}" />
-            <circle cx="10" cy="9" r="3.5" fill="{'#10b981' if is_busy else '#94a3b8'}" />
-            <text x="20" y="12.5" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="bold" fill="{'#34d399' if is_busy else '#cbd5e1'}">
-                {'🔴 SIBUK BEKERJA' if is_busy else '🟢 STANDBY (KOSONG)'}
-            </text>
-        </g>
-    </svg>
-    """
-    return svg
-
-
 def get_live_office_data():
     """Mengambil status real-time aktivitas & kapasitas seluruh karyawan AI."""
     db_path = config.MEMORY_DB_PATH
@@ -309,151 +15,142 @@ def get_live_office_data():
     now_dt = datetime.now(tz)
     now_wib = now_dt.strftime("%d %B %Y • %H:%M:%S WIB")
 
-    # Daftar profil karyawan AI lengkap dengan tema warna dan wujud
+    # 9 Karyawan AI dengan koordinat 3D di dalam ruang kantor
     agents = [
+        {
+            "id": "ARIF",
+            "name": "Hakim Ketua Arif",
+            "role": "Chief Decider & Consensus",
+            "model": "Ensemble Judge (>=3 Buy & >=60%)",
+            "color": "#a855f7",
+            "hex": 0xa855f7,
+            "pos": [0, 0, -3.5],  # Meja utama di depan ruang sidang
+            "status": "DECIDING",
+            "capacity": 85,
+            "current_task": "Memimpin sidang konsensus 5 AI saham",
+            "speech": "Sidang panel 5 AI dibuka. Semua rekomendasi wajib diuji % Works & konsensus.",
+            "total_tasks": 0,
+            "desk_type": "executive",
+        },
         {
             "id": "AI_1",
             "name": "AI-1 Gemini Scalper",
-            "role": "Volume & Momentum Scalper",
+            "role": "Momentum & VWAP Scalper",
             "model": "Google Gemini 3.6 Flash",
-            "avatar": "⚡",
-            "theme_color": "#06b6d4",
-            "accent_color": "#22d3ee",
-            "desc": "Membaca lonjakan volume intraday 15m, posisi harga di atas VWAP, dan breakout cepat.",
-            "status": "STANDBY",
-            "capacity": 20,
-            "current_task": "Menunggu radar lonjakan volume intraday & perintah /cek",
-            "speech": "Radar volume intraday aktif. Belum ada lonjakan anomali di jam ini.",
+            "color": "#06b6d4",
+            "hex": 0x06b6d4,
+            "pos": [-4.5, 0, -1],
+            "status": "WORKING",
+            "capacity": 90,
+            "current_task": "Menghitung lonjakan volume 15m & posisi VWAP",
+            "speech": "Volume intraday spike terdeteksi! Mengecek kekuatan pembeli di atas VWAP.",
             "total_tasks": 0,
-            "desk_icon": "💻",
+            "desk_type": "standard",
+        },
+        {
+            "id": "AI_5",
+            "name": "AI-5 Quant Bayesian",
+            "role": "Quant Math & Bayesian Prob",
+            "model": "Quant Bayesian v1 (Python)",
+            "color": "#3b82f6",
+            "hex": 0x3b82f6,
+            "pos": [-4.5, 0, 2],
+            "status": "WORKING",
+            "capacity": 80,
+            "current_task": "Komputasi matriks bayesian & fee BEI 0.40%",
+            "speech": "Probabilitas matematika dihitung murni dari rekaman memori historis.",
+            "total_tasks": 0,
+            "desk_type": "standard",
         },
         {
             "id": "AI_2",
             "name": "AI-2 OpenAI 120B Auditor",
             "role": "Risk & Trap Guard",
             "model": "OpenAI GPT-OSS 120B (Groq)",
-            "avatar": "🛡️",
-            "theme_color": "#f43f5e",
-            "accent_color": "#fb7185",
-            "desc": "Mencari potensi bull trap pucuk, spread mahal, dan alasan kuat menahan diri.",
-            "status": "STANDBY",
-            "capacity": 25,
-            "current_task": "Audit risiko portofolio & spread order book",
-            "speech": "Disiplin modal adalah nomor satu. Jangan beli di pucuk tanpa konfirmasi.",
+            "color": "#f43f5e",
+            "hex": 0xf43f5e,
+            "pos": [4.5, 0, -1],
+            "status": "AUDITING",
+            "capacity": 75,
+            "current_task": "Audit potensi jebakan pucuk (bull trap) & spread",
+            "speech": "Waspada! Jangan buru-buru hajar kanan jika spread bid-offer terlalu tipis.",
             "total_tasks": 0,
-            "desk_icon": "📊",
+            "desk_type": "standard",
+        },
+        {
+            "id": "AI_4",
+            "name": "AI-4 Qwen 3.8 Trend",
+            "role": "Trend Alignment & Swing",
+            "model": "Alibaba Qwen 3.8 27B (Groq)",
+            "color": "#f59e0b",
+            "hex": 0xf59e0b,
+            "pos": [4.5, 0, 2],
+            "status": "WORKING",
+            "capacity": 70,
+            "current_task": "Validasi tren EMA20/EMA50 & rasio R:R 1:2",
+            "speech": "Tren harian selaras. Posisi support kuat dan Risk/Reward di atas 1:2.",
+            "total_tasks": 0,
+            "desk_type": "standard",
         },
         {
             "id": "AI_3",
             "name": "AI-3 Nemotron 550B Bandar",
             "role": "Smart Money & Flow Tracer",
-            "model": "NVIDIA Nemotron 550B (OpenRouter)",
-            "avatar": "🐋",
-            "theme_color": "#10b981",
-            "accent_color": "#34d399",
-            "desc": "Menganalisis akumulasi bandar besar dan jejak transaksi institusi pasar modal.",
-            "status": "STANDBY",
-            "capacity": 30,
-            "current_task": "Melacak jejak akumulasi bandar di saham likuid",
-            "speech": "Mendeteksi aliran dana rahasia. Mengikuti jejak smart money institusi.",
+            "model": "NVIDIA Nemotron 550B",
+            "color": "#10b981",
+            "hex": 0x10b981,
+            "pos": [-1.8, 0, 2.5],
+            "status": "WORKING",
+            "capacity": 85,
+            "current_task": "Melacak jejak akumulasi bandar & broker flow",
+            "speech": "Terdeteksi akumulasi konsisten dari broker asing dan institusi.",
             "total_tasks": 0,
-            "desk_icon": "🖥️",
-        },
-        {
-            "id": "AI_4",
-            "name": "AI-4 Qwen 3.8 Trend Guard",
-            "role": "Trend Alignment & Swing",
-            "model": "Alibaba Qwen 3.8 27B (Groq)",
-            "avatar": "📈",
-            "theme_color": "#f59e0b",
-            "accent_color": "#fbbf24",
-            "desc": "Menjaga keselarasan tren EMA harian & rasio Risk/Reward minimal 1:2.",
-            "status": "STANDBY",
-            "capacity": 15,
-            "current_task": "Menghitung jarak Support/Resistance & EMA harian",
-            "speech": "Trend adalah sahabat kita. Jangan melawan arah arus besar IHSG.",
-            "total_tasks": 0,
-            "desk_icon": "📑",
-        },
-        {
-            "id": "AI_5",
-            "name": "AI-5 Quant Bayesian Engine",
-            "role": "Bayesian Probability Math",
-            "model": "Quant Bayesian v1 (Python)",
-            "avatar": "🧮",
-            "theme_color": "#3b82f6",
-            "accent_color": "#60a5fa",
-            "desc": "Kalkulasi statistik murni, potongan fee BEI 0.40%, dan probabilitas historis.",
-            "status": "STANDBY",
-            "capacity": 10,
-            "current_task": "Kalibrasi data empiris & potongan fee BEI 0.40%",
-            "speech": "Probabilitas matematika siap dikomputasi begitu ada ticker baru.",
-            "total_tasks": 0,
-            "desk_icon": "🗄️",
-        },
-        {
-            "id": "ARIF",
-            "name": "Hakim Ketua Arif",
-            "role": "Chief Decider & Consensus",
-            "model": "Ensemble Judge (>=3 Buy & >=60%)",
-            "avatar": "⚖️",
-            "theme_color": "#a855f7",
-            "accent_color": "#c084fc",
-            "desc": "Memimpin sidang 5 AI, memverifikasi konsensus, & mengetok palu BUY/WAIT.",
-            "status": "STANDBY",
-            "capacity": 15,
-            "current_task": "Menunggu rekap suara 5 AI dari meja analis",
-            "speech": "Palu sidang siap diketok. Sidang 5 AI akan dibuka jika ada perintah /cek.",
-            "total_tasks": 0,
-            "desk_icon": "🔨",
+            "desk_type": "standard",
         },
         {
             "id": "BUDI",
             "name": "Budi (Macro & Berita)",
             "role": "News & Macro Hunter",
             "model": "Daily Standup Analyst",
-            "avatar": "📰",
-            "theme_color": "#0ea5e9",
-            "accent_color": "#38bdf8",
-            "desc": "Riset perbandingan 30+ artikel berita 7 sektor BEI & sentimen global.",
+            "color": "#0ea5e9",
+            "hex": 0x0ea5e9,
+            "pos": [1.8, 0, 2.5],
             "status": "STANDBY",
-            "capacity": 35,
-            "current_task": "Scanning berita Kontan, Bisnis, CNBC, & Investor.id",
-            "speech": "Memantau katalis komoditas, BI rate, dan sentimen sektor.",
+            "capacity": 30,
+            "current_task": "Monitoring radar 30+ berita keuangan 7 sektor",
+            "speech": "Sentimen komoditas dan arah suku bunga BI sedang dikompilasi.",
             "total_tasks": 0,
-            "desk_icon": "☕",
+            "desk_type": "standard",
         },
         {
             "id": "SARI",
-            "name": "Sari (Screener Saham)",
+            "name": "Sari (Screener)",
             "role": "Technical Screener",
             "model": "Daily Standup Screener",
-            "avatar": "🎯",
-            "theme_color": "#14b8a6",
-            "accent_color": "#2dd4bf",
-            "desc": "Menyaring kandidat saham aktif dengan likuiditas tinggi.",
+            "color": "#14b8a6",
+            "hex": 0x14b8a6,
+            "pos": [-1.8, 0, 5.5],
             "status": "STANDBY",
             "capacity": 25,
-            "current_task": "Menjaga daftar pantau emiten potensial",
-            "speech": "Daftar emiten LQ45 & Second Liner siap disaring.",
+            "current_task": "Menyaring kandidat breakout emiten BEI",
+            "speech": "Daftar pantau saham aktif hari ini sudah siap di meja.",
             "total_tasks": 0,
-            "desk_icon": "📋",
+            "desk_type": "standard",
         },
         {
             "id": "HENDRA",
             "name": "Hendra (Risk Manager)",
             "role": "Money Management Guard",
             "model": "Daily Standup Controller",
-            "avatar": "💼",
-            "theme_color": "#f97316",
-            "accent_color": "#fb923c",
-            "desc": "Memastikan batas alokasi modal simulasi & trailing stop disiplin.",
+            "color": "#f97316",
+            "hex": 0xf97316,
+            "pos": [1.8, 0, 5.5],
             "status": "STANDBY",
-            "capacity": 15,
-            "current_task": "Menjaga batas risiko portofolio simulasi Paper",
-            "speech": "Portofolio Paper aman. Tidak ada batas risiko yang dilanggar.",
+            "capacity": 20,
+            "current_task": "Menjaga batas risiko portofolio Paper Trading",
+            "speech": "Semua posisi disiplin dalam batas toleransi drawdown 1.5%.",
             "total_tasks": 0,
-            "desk_icon": "🔒",
+            "desk_type": "standard",
         },
     ]
 
@@ -486,10 +183,7 @@ def get_live_office_data():
             """)
             latest_votes = {r["slot_id"]: r for r in cur.fetchall()}
 
-            # Total vote keseluruhan
             total_votes_recorded = cur.execute("SELECT count(*) FROM ai_panel_votes").fetchone()[0]
-
-            # Total analisis
             active_analyses_count = cur.execute("SELECT count(*) FROM analysis_history").fetchone()[0]
 
             # 10 log aktivitas voting terakhir
@@ -522,7 +216,7 @@ def get_live_office_data():
                     "final": r["final_decision"] or "PENDING",
                 })
 
-            # Analisis paling mutakhir
+            # Analisis mutakhir
             cur.execute("""
                 SELECT ticker, direction, entry_price, take_profit_1, stop_loss, created_at_wib
                 FROM analysis_history
@@ -533,7 +227,7 @@ def get_live_office_data():
 
             conn.close()
 
-            # Perbarui status masing-masing agen berdasarkan data nyata
+            # Update per agen
             for ag in agents:
                 sid = ag["id"]
                 if sid in vote_counts:
@@ -544,25 +238,23 @@ def get_live_office_data():
                     t_clean = (lv["ticker"] or "").replace(".JK", "")
                     ag["speech"] = f"[{t_clean}] {lv['reasoning_summary']}"
                     ag["current_task"] = f"Menganalisis {t_clean} ({lv['vote_direction']} • {lv['confidence_pct']:.0f}%)"
-                    ag["capacity"] = min(95, 45 + (ag["total_tasks"] % 40))
+                    ag["capacity"] = min(95, 55 + (ag["total_tasks"] % 40))
                     ag["status"] = "WORKING" if lv["vote_direction"] == "BUY" else "AUDITING"
 
                 elif sid == "ARIF":
                     ag["total_tasks"] = active_analyses_count
                     if last_analysis:
                         t_clean = (last_analysis["ticker"] or "").replace(".JK", "")
-                        ag["current_task"] = f"Ketok Palu Sidang: {t_clean} -> {last_analysis['direction']}"
-                        ag["speech"] = f"Hasil sidang terakhir {t_clean} diputuskan {last_analysis['direction']} di harga Rp {last_analysis['entry_price']:,.0f}".replace(",", ".")
-                        ag["capacity"] = 80
+                        ag["current_task"] = f"Ketok Palu: {t_clean} -> {last_analysis['direction']}"
+                        ag["speech"] = f"Keputusan sidang {t_clean}: {last_analysis['direction']} (Rp {last_analysis['entry_price']:,.0f})".replace(",", ".")
+                        ag["capacity"] = 85
                         ag["status"] = "DECIDING"
                 elif sid in ["BUDI", "SARI", "HENDRA"]:
                     ag["total_tasks"] = max(12, active_analyses_count // 3)
-                    ag["capacity"] = 35 + (len(ag["name"]) * 3 % 45)
 
         except Exception as e:
             pass
 
-    # Status Kantor
     busy_count = sum(1 for a in agents if a["status"] in ["WORKING", "AUDITING", "DECIDING"])
     idle_count = len(agents) - busy_count
     overall_office_load = int(sum(a["capacity"] for a in agents) / max(1, len(agents)))
@@ -577,7 +269,7 @@ def get_live_office_data():
             "overall_load_pct": overall_office_load,
             "total_analyses_completed": active_analyses_count,
             "total_votes_cast": total_votes_recorded,
-            "server_health": "100% ONLINE (Render + UptimeRobot)",
+            "server_health": "100% ONLINE (Render 24/7)",
         },
         "agents": agents,
         "recent_logs": recent_logs,
@@ -585,397 +277,893 @@ def get_live_office_data():
 
 
 def render_live_office_html():
-    """Merender HTML Virtual Office AI Agent secara visual interaktif, lengkap dengan wujud fisik orang di meja kerja."""
-    data = get_live_office_data()
-    metrics = data["office_metrics"]
-    agents = data["agents"]
-    logs = data["recent_logs"]
-
-    # Buat kartu meja kantor + wujud visual orang untuk masing-masing agent
-    agent_desks_html = ""
-    for ag in agents:
-        is_busy = ag["status"] in ["WORKING", "DECIDING", "AUDITING"]
-        status_color = (
-            "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-            if ag["status"] in ["WORKING", "DECIDING"]
-            else ("bg-amber-500/20 text-amber-300 border-amber-500/40" if ag["status"] == "AUDITING" else "bg-slate-700/40 text-slate-300 border-slate-600/40")
-        )
-        status_dot = (
-            "bg-emerald-400 animate-ping"
-            if ag["status"] in ["WORKING", "DECIDING"]
-            else ("bg-amber-400 animate-ping" if ag["status"] == "AUDITING" else "bg-slate-400")
-        )
-
-        cap_color = (
-            "bg-gradient-to-r from-emerald-500 to-teal-400"
-            if ag["capacity"] < 50
-            else ("bg-gradient-to-r from-amber-500 to-orange-400" if ag["capacity"] < 80 else "bg-gradient-to-r from-rose-500 to-pink-500")
-        )
-
-        # Generate wujud visual SVG orang lagi kerja di meja!
-        desk_svg = generate_character_svg(ag)
-
-        agent_desks_html += f"""
-        <div class="agent-desk relative rounded-2xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5 shadow-2xl hover:border-cyan-500/60 transition-all duration-300 flex flex-col justify-between group overflow-hidden" data-agent-id="{ag['id']}">
-            <!-- Glow Latar Belakang Meja -->
-            <div class="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none" style="background-color: {ag.get('theme_color', '#06b6d4')}"></div>
-
-            <div>
-                <!-- Header Kartu Karyawan -->
-                <div class="flex items-start justify-between gap-3 mb-3">
-                    <div class="flex items-center gap-3">
-                        <div class="relative w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">
-                            {ag['avatar']}
-                            <!-- Active pulse dot -->
-                            <span class="absolute -top-1 -right-1 flex h-3 w-3">
-                                <span class="{status_dot} absolute inline-flex h-full w-full rounded-full opacity-75"></span>
-                                <span class="{status_dot} relative inline-flex rounded-full h-3 w-3"></span>
-                            </span>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
-                                {ag['name']}
-                            </h3>
-                            <div class="text-[11px] font-medium" style="color: {ag.get('accent_color', '#22d3ee')}">{ag['role']}</div>
-                            <div class="text-[10px] text-slate-500 font-mono truncate max-w-[170px]">{ag['model']}</div>
-                        </div>
-                    </div>
-
-                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border tracking-wide uppercase {status_color}">
-                        {ag['status']}
-                    </span>
-                </div>
-
-                <!-- WUJUD VISUAL KARYAWAN DI MEJA (SVG ANIMASI) -->
-                <div class="my-3 rounded-xl bg-slate-950/90 border border-slate-800/80 p-2 shadow-inner overflow-hidden relative group-hover:border-slate-700 transition-colors">
-                    <div class="relative w-full aspect-[400/220] flex items-center justify-center">
-                        {desk_svg}
-                    </div>
-                </div>
-
-                <!-- Thought Bubble / Dialog Balon Berpikir -->
-                <div class="relative my-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 text-xs text-slate-300 leading-relaxed font-sans shadow-inner">
-                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                        <span>💬</span> <span>Aktivitas & Log Berpikir Terkini:</span>
-                    </div>
-                    <p class="italic text-slate-200 line-clamp-3 agent-speech">"{ag['speech']}"</p>
-                </div>
-            </div>
-
-            <!-- Bottom: Capacity Meter & Desk Activity -->
-            <div class="space-y-2 pt-2 border-t border-slate-800/80 mt-2">
-                <div>
-                    <div class="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
-                        <span class="flex items-center gap-1">{ag['desk_icon']} Beban Kerja (Kapasitas)</span>
-                        <span class="font-bold text-white agent-capacity-text">{ag['capacity']}%</span>
-                    </div>
-                    <div class="w-full bg-slate-950 rounded-full h-2 border border-slate-800 overflow-hidden">
-                        <div class="{cap_color} h-2 rounded-full transition-all duration-700 agent-capacity-bar" style="width: {ag['capacity']}%"></div>
-                    </div>
-                </div>
-
-                <div class="flex justify-between items-center text-[11px] text-slate-400 pt-1">
-                    <span class="text-slate-500 truncate max-w-[160px] flex items-center gap-1">
-                        ⚡ <span class="agent-task truncate">{ag['current_task']}</span>
-                    </span>
-                    <span class="font-mono text-cyan-400/90 font-semibold">{ag['total_tasks']} Tugas</span>
-                </div>
-            </div>
-        </div>
-        """
-
-    # Buat baris log aktivitas real-time
-    logs_html = ""
-    for log in logs:
-        badge = (
-            "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
-            if log["vote"] == "BUY"
-            else "text-amber-400 bg-amber-500/10 border-amber-500/30"
-        )
-        logs_html += f"""
-        <tr class="border-b border-slate-800/60 hover:bg-slate-800/30 text-xs transition-colors">
-            <td class="py-2.5 px-3 font-mono text-slate-400">{log['time']}</td>
-            <td class="py-2.5 px-3 font-bold text-cyan-400">{log['ticker']}</td>
-            <td class="py-2.5 px-3 text-slate-300">{log['ai_name']}</td>
-            <td class="py-2.5 px-3 text-center">
-                <span class="px-2 py-0.5 rounded border text-[10px] font-bold font-mono {badge}">
-                    {log['vote']} ({log['confidence']})
-                </span>
-            </td>
-            <td class="py-2.5 px-3 text-slate-400 text-[11px] truncate max-w-xs">{log['reasoning']}</td>
-        </tr>
-        """
+    """
+    Merender Ruang Kantor Virtual 3D Realtime Interaktif.
+    Bukan sekadar dashboard kartu biasa, melainkan simulasi ruang kantor 3D yang hidup:
+    karyawan duduk di kursi, tangan mengetik di keyboard, monitor menyala, ada yang jalan santai ke dispenser kopi.
+    """
+    initial_data = get_live_office_data()
+    agents_json = json.dumps(initial_data["agents"])
 
     return f"""<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Virtual Office • Saham AI Agent (Live Realtime)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI Virtual Office 3D • Saham AI Agent (Live SaaS)</title>
+    <!-- Three.js 3D Engine & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body {{ font-family: 'Plus Jakarta Sans', sans-serif; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #030712;
+            color: #f8fafc;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            user-select: none;
+        }}
         .font-mono {{ font-family: 'JetBrains Mono', monospace; }}
 
-        /* Keyframes Animasi Tangan Mengetik Aktif */
-        @keyframes typeLeft {{
-            0%, 100% {{ transform: translateY(0); }}
-            50% {{ transform: translateY(-3.5px); }}
-        }}
-        @keyframes typeRight {{
-            0%, 100% {{ transform: translateY(-3.5px); }}
-            50% {{ transform: translateY(0); }}
-        }}
-        .animate-typing-l {{
-            animation: typeLeft 0.22s ease-in-out infinite;
-        }}
-        .animate-typing-r {{
-            animation: typeRight 0.22s ease-in-out infinite 0.11s;
+        #webgl-container {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
         }}
 
-        /* Keyframes Animasi Kepala Fokus */
-        @keyframes headBob {{
-            0%, 100% {{ transform: translateY(0) rotate(0deg); }}
-            50% {{ transform: translateY(-1.5px) rotate(0.4deg); }}
-        }}
-        @keyframes headIdle {{
-            0%, 100% {{ transform: translateY(0); }}
-            50% {{ transform: translateY(1.5px); }}
-        }}
-        .animate-head-bob {{
-            animation: headBob 1.6s ease-in-out infinite;
-        }}
-        .animate-head-idle {{
-            animation: headIdle 3s ease-in-out infinite;
+        /* 3D Floating Name Tags */
+        .agent-nametag {{
+            position: absolute;
+            transform: translate(-50%, -100%);
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 20;
+            white-space: nowrap;
         }}
 
-        /* Keyframes Monitor Glow */
-        @keyframes chartGlow {{
-            0%, 100% {{ filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.4)); }}
-            50% {{ filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.7)); }}
-        }}
-        .animate-chart-glow {{
-            animation: chartGlow 2s ease-in-out infinite;
+        /* Custom Glassmorphism */
+        .glass-panel {{
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(51, 65, 85, 0.6);
         }}
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-cyan-500 selection:text-slate-950">
+<body class="relative">
 
-    <!-- Top Navigation Bar -->
-    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-4 py-3 sm:px-6">
-        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-3">
-            <div class="flex items-center gap-3">
-                <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/20 text-xl">
-                    🏢
-                </div>
-                <div>
-                    <h1 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                        AI Virtual Office <span class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span> LIVE SAAS</span>
-                    </h1>
-                    <p class="text-xs text-slate-400">Monitoring Wujud Karyawan AI yang Sedang Bekerja • Render 24/7</p>
-                </div>
+    <!-- Canvas 3D Three.js -->
+    <div id="webgl-container"></div>
+
+    <!-- UI Overlay: Top Navigation Bar -->
+    <header class="absolute top-3 left-3 right-3 sm:top-5 sm:left-6 sm:right-6 z-30 flex justify-between items-center pointer-events-none">
+        <div class="glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-2xl pointer-events-auto">
+            <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg text-lg">
+                🏢
             </div>
-
-            <!-- Header Action Controls -->
-            <div class="flex items-center gap-2.5 text-xs">
-                <!-- Navigasi Utama: Kembali ke Halaman Rekap Saham -->
-                <a href="/" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition-all">
-                    📈 Buka Rekap Saham (Utama)
-                </a>
-
-                <button onclick="fetchLiveUpdates()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 font-medium border border-slate-700 flex items-center gap-1.5 transition">
-                    🔄 Sync Live
-                </button>
-
-                <a href="https://t.me/Agent_d_saham_bot" target="_blank" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium shadow transition flex items-center gap-1">
-                    Bot Telegram ↗
-                </a>
+            <div>
+                <h1 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    AI Virtual Office <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping"></span> 3D LIVE</span>
+                </h1>
+                <p class="text-[11px] text-slate-400 hidden sm:block">Simulasi Ruang Kantor 3D Karyawan AI Saham • Putar & Zoom Bebas</p>
             </div>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button onclick="toggleAudio()" id="btn-audio" class="glass-panel px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/80 transition flex items-center gap-1.5 shadow-lg">
+                🔇 <span class="hidden sm:inline">Suara Kantor</span>
+            </button>
+
+            <!-- Tombol Navigasi ke Web Rekap Saham Utama -->
+            <a href="/" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition">
+                📈 <span class="hidden sm:inline">Buka Rekap</span> Saham
+            </a>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 py-6 sm:px-6 space-y-6">
+    <!-- UI Overlay: 3D Camera Angles Bar (Bottom Center) -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-wrap justify-center gap-1.5 sm:gap-2 px-3 max-w-full">
+        <div class="glass-panel p-1.5 rounded-2xl flex items-center gap-1 shadow-2xl pointer-events-auto overflow-x-auto max-w-[94vw]">
+            <button onclick="setCameraView('overview')" class="px-3 py-1.5 rounded-xl text-xs font-bold text-cyan-400 hover:bg-slate-800/90 transition flex items-center gap-1">
+                🎥 Semua Meja
+            </button>
+            <button onclick="setCameraView('judge')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+                ⚖️ Hakim Arif
+            </button>
+            <button onclick="setCameraView('scalper')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+                ⚡ Scalper & Quant
+            </button>
+            <button onclick="setCameraView('auditor')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+                🛡️ Tim Risiko
+            </button>
+            <button onclick="setCameraView('lounge')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+                ☕ Coffee Bar
+            </button>
+        </div>
+    </div>
 
-        <!-- Top Office Status Banner -->
-        <div class="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-indigo-950/50 border border-slate-800 p-5 shadow-lg">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <div class="text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
-                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Ruang Kerja Digital Karyawan AI Saham
+    <!-- UI Overlay: Left Stats Pill (Quick Office Capacity) -->
+    <div class="absolute bottom-4 left-4 z-30 hidden md:block pointer-events-none">
+        <div class="glass-panel p-3.5 rounded-2xl space-y-1.5 shadow-2xl pointer-events-auto max-w-xs">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                <span>Kapasitas Kantor AI</span>
+                <span class="text-cyan-400 font-mono" id="stat-load-text">{initial_data['office_metrics']['overall_load_pct']}%</span>
+            </div>
+            <div class="w-48 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-700/50">
+                <div id="stat-load-bar" class="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full transition-all duration-700" style="width: {initial_data['office_metrics']['overall_load_pct']}%"></div>
+            </div>
+            <div class="text-[11px] text-slate-300 flex justify-between pt-0.5">
+                <span>🟢 <span id="stat-busy-text">{initial_data['office_metrics']['busy_agents']}</span> AI Bekerja</span>
+                <span class="text-slate-500">☕ <span id="stat-idle-text">{initial_data['office_metrics']['idle_agents']}</span> Standby</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Overlay: Right Drawer Detail Karyawan (Saat Meja Diklik di 3D) -->
+    <div id="agent-drawer" class="absolute top-0 right-0 h-full w-full sm:w-96 z-40 transform translate-x-full transition-transform duration-300 pointer-events-auto p-3 sm:p-5 flex flex-col justify-between">
+        <div class="glass-panel h-full rounded-3xl p-5 shadow-2xl flex flex-col justify-between overflow-y-auto border border-slate-700/70">
+            <div>
+                <!-- Header Drawer -->
+                <div class="flex justify-between items-start pb-4 border-b border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div id="drawer-avatar" class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl shadow-inner border border-slate-700">
+                            🤖
+                        </div>
+                        <div>
+                            <h2 id="drawer-name" class="text-base font-bold text-white">Nama AI</h2>
+                            <p id="drawer-role" class="text-xs text-cyan-400 font-medium">Peran AI</p>
+                        </div>
                     </div>
-                    <h2 class="text-xl sm:text-2xl font-bold text-white mt-1">Virtual Floor: Meja & Wujud Karyawan AI</h2>
-                    <p class="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-                        Setiap AI memiliki wujud visual duduk di mejanya masing-masing dengan dual monitor. Saat ada perintah analisis saham, tangan mereka mengetik cepat di keyboard dan monitor menyala aktif. Saat kosong, mereka santai di meja.
-                    </p>
+                    <button onclick="closeDrawer()" class="h-8 w-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition">
+                        ✕
+                    </button>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <div class="px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-right">
-                        <div class="text-[11px] text-slate-400 font-medium">Beban Kantor Saat Ini</div>
-                        <div class="text-xl font-bold font-mono text-cyan-400" id="stat-office-load">{metrics['overall_load_pct']}%</div>
+                <!-- Info Model & Status -->
+                <div class="my-4 space-y-3">
+                    <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                        <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Model Engine:</div>
+                        <div id="drawer-model" class="text-xs font-mono text-slate-200">Google Gemini 3.6 Flash</div>
                     </div>
-                    <div class="px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-right">
-                        <div class="text-[11px] text-slate-400 font-medium">Karyawan Bekerja</div>
-                        <div class="text-xl font-bold font-mono text-emerald-400"><span id="stat-busy">{metrics['busy_agents']}</span> / {metrics['total_agents']}</div>
+
+                    <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status & Beban Kerja:</span>
+                            <span id="drawer-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold border">WORKING</span>
+                        </div>
+                        <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 mt-2">
+                            <div id="drawer-cap-bar" class="bg-cyan-500 h-full rounded-full transition-all duration-500" style="width: 80%"></div>
+                        </div>
+                        <div class="text-[11px] text-right text-slate-400 font-mono mt-1"><span id="drawer-cap-num">80</span>% Kapasitas</div>
+                    </div>
+
+                    <!-- Log Berpikir Terkini -->
+                    <div class="p-4 rounded-2xl bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800/90 shadow-inner">
+                        <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <span>💬</span> <span>Apa yang Sedang Dikerjakan:</span>
+                        </div>
+                        <p id="drawer-speech" class="text-xs text-slate-200 italic leading-relaxed">
+                            "Menganalisis pergerakan volume intraday dan momentum harga saham..."
+                        </p>
+                    </div>
+
+                    <div class="p-3 rounded-2xl bg-slate-950/50 border border-slate-800 text-xs text-slate-400">
+                        <span class="text-slate-500">Tugas Saat Ini:</span>
+                        <div id="drawer-task" class="text-slate-200 font-medium mt-0.5">Audit order book</div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- 4 Quick KPI Summary Cards -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 flex items-center justify-between">
-                    <span>Total Karyawan AI</span>
-                    <span class="text-cyan-400">🤖</span>
-                </div>
-                <div class="text-2xl font-bold font-mono text-white mt-1.5">{metrics['total_agents']} <span class="text-xs text-slate-500 font-sans">Karyawan</span></div>
-                <div class="text-[11px] text-emerald-400 font-medium mt-1">9 Meja Kerja Lengkap</div>
-            </div>
-
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 flex items-center justify-between">
-                    <span>Sedang Kerja (Penuh)</span>
-                    <span class="text-emerald-400">💼</span>
-                </div>
-                <div class="text-2xl font-bold font-mono text-emerald-400 mt-1.5" id="card-busy-count">{metrics['busy_agents']} <span class="text-xs text-slate-500 font-sans">Agent</span></div>
-                <div class="text-[11px] text-slate-400 font-medium mt-1">Mengetik & Analisis Pasar</div>
-            </div>
-
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 flex items-center justify-between">
-                    <span>Kosong (Standby)</span>
-                    <span class="text-slate-400">☕</span>
-                </div>
-                <div class="text-2xl font-bold font-mono text-amber-300 mt-1.5" id="card-idle-count">{metrics['idle_agents']} <span class="text-xs text-slate-500 font-sans">Agent</span></div>
-                <div class="text-[11px] text-slate-400 font-medium mt-1">Siap Menerima Tugas Baru</div>
-            </div>
-
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
-                <div class="text-xs font-medium text-slate-400 flex items-center justify-between">
-                    <span>Total Tugas Selesai</span>
-                    <span class="text-blue-400">🗳️</span>
-                </div>
-                <div class="text-2xl font-bold font-mono text-cyan-400 mt-1.5">{metrics['total_votes_cast']} <span class="text-xs text-slate-500 font-sans">Keputusan</span></div>
-                <div class="text-[11px] text-slate-400 font-medium mt-1">Tersimpan di SQLite</div>
+            <!-- Tombol Interaksi -->
+            <div class="pt-4 border-t border-slate-800 space-y-2">
+                <a href="https://t.me/Agent_d_saham_bot" target="_blank" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition">
+                    💬 Beri Tugas via Telegram ↗
+                </a>
+                <button onclick="closeDrawer()" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+                    Tutup Detail
+                </button>
             </div>
         </div>
+    </div>
 
-        <!-- Section: Wujud Visual Meja Kerja Karyawan Grid -->
-        <div>
-            <div class="flex justify-between items-center mb-3.5">
-                <div>
-                    <h3 class="text-base font-bold text-white flex items-center gap-2">
-                        <span>🪑 Wujud Visual Meja Kerja 9 Karyawan AI</span>
-                    </h3>
-                    <p class="text-xs text-slate-400">Perhatikan animasi tangan mengetik di keyboard dan chart monitor saat karyawan sedang bekerja</p>
-                </div>
-                <div class="text-xs font-mono text-slate-400 flex items-center gap-2">
-                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Auto-Sync: <span class="text-cyan-400" id="sync-counter">3s</span>
-                </div>
-            </div>
+    <!-- Container Floating 2D Tags over 3D coordinates -->
+    <div id="tags-container" class="pointer-events-none absolute inset-0 z-20 overflow-hidden"></div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="agent-desks-container">
-                {agent_desks_html}
-            </div>
-        </div>
-
-        <!-- Section: Realtime Live Activity Feed -->
-        <div class="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-xl">
-            <div class="p-4 sm:p-5 border-b border-slate-800 flex justify-between items-center">
-                <div>
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                        <span>📡 Live Activity Feed (Sidang & Voting 5 AI Terkini)</span>
-                    </h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Transparansi komputasi: apa yang baru saja diputuskan para karyawan AI</p>
-                </div>
-                <span class="text-[11px] font-mono text-slate-500">Database: agent_memory.db</span>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse text-xs">
-                    <thead>
-                        <tr class="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
-                            <th class="py-2.5 px-3">Jam (WIB)</th>
-                            <th class="py-2.5 px-3">Emiten</th>
-                            <th class="py-2.5 px-3">Karyawan AI</th>
-                            <th class="py-2.5 px-3 text-center">Suara & Keyakinan</th>
-                            <th class="py-2.5 px-3">Alasan Logika Pertimbangan</th>
-                        </tr>
-                    </thead>
-                    <tbody id="live-feed-body">
-                        {logs_html if logs_html else '<tr><td colspan="5" class="text-center py-6 text-slate-500">Belum ada log sidang tersimpan.</td></tr>'}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-    </main>
-
-    <!-- Footer -->
-    <footer class="border-t border-slate-900 py-6 text-center text-xs text-slate-500 mt-12 space-y-1">
-        <div>AI Virtual Office SaaS • Saham AI Agent BEI • Render Cloud 24/7</div>
-        <div class="text-[11px] text-slate-600">Dibuat khusus untuk Bos Dimas • UptimeRobot Keepalive Protected</div>
-    </footer>
-
-    <!-- Real-time Polling Script -->
+    <!-- Script Utama Three.js 3D Virtual Office -->
     <script>
-        let countdown = 3;
-        const counterEl = document.getElementById('sync-counter');
+        const initialAgents = {agents_json};
+        let scene, camera, renderer, controls;
+        const deskMeshes = [];
+        const characterGroups = [];
+        const walkingHumans = [];
+        let raycaster, mouse;
+        let selectedAgentId = null;
 
-        setInterval(() => {{
-            countdown--;
-            if (countdown <= 0) {{
-                countdown = 3;
-                fetchLiveUpdates();
+        // Audio Ambience Kantor (Synthesized procedural keyboard typing clicks)
+        let audioCtx = null;
+        let isAudioPlaying = false;
+        let audioInterval = null;
+
+        function init3D() {{
+            const container = document.getElementById('webgl-container');
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // 1. Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x060913);
+            scene.fog = new THREE.FogExp2(0x060913, 0.025);
+
+            // 2. Camera (Isometric Perspective)
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+            camera.position.set(16, 14, 18);
+
+            // 3. Renderer
+            renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: false, powerPreference: "high-performance" }});
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // 4. Orbit Controls (Bebas Rotasi & Zoom)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.15; // Mencegah tembus ke bawah lantai
+            controls.minDistance = 5;
+            controls.maxDistance = 45;
+            controls.target.set(0, 1.5, 0);
+
+            // 5. Pencahayaan Kantor (Lighting)
+            setupLighting();
+
+            // 6. Arsitektur Ruangan Kantor (Lantai, Dinding Kaca Skyline, Plafon)
+            buildOfficeRoom();
+
+            // 7. Meja Kerja & Karakter Karyawan AI 3D
+            buildWorkstationsAndCharacters(initialAgents);
+
+            // 8. Karyawan yang Berjalan di Koridor Kantor (Animasi Dinamis)
+            buildWalkingOfficeEmployees();
+
+            // Raycaster untuk Klik Meja di 3D
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('pointerdown', onCanvasClick, false);
+
+            animate();
+        }}
+
+        function setupLighting() {{
+            // Ambient Light lembut
+            const ambient = new THREE.AmbientLight(0x38bdf8, 0.45);
+            scene.add(ambient);
+
+            // Lampu Utama Kantor (Downlight hangat)
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.85);
+            mainLight.position.set(12, 20, 15);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 2048;
+            mainLight.shadow.mapSize.height = 2048;
+            mainLight.shadow.camera.near = 0.5;
+            mainLight.shadow.camera.far = 60;
+            const d = 16;
+            mainLight.shadow.camera.left = -d;
+            mainLight.shadow.camera.right = d;
+            mainLight.shadow.camera.top = d;
+            mainLight.shadow.camera.bottom = -d;
+            scene.add(mainLight);
+
+            // Aksen Lampu Neon Cyan dari Langit-langit
+            const cyanLight = new THREE.PointLight(0x06b6d4, 1.2, 25);
+            cyanLight.position.set(-5, 6, 0);
+            scene.add(cyanLight);
+
+            // Aksen Lampu Neon Ungu di Meja Hakim Arif
+            const purpleLight = new THREE.PointLight(0xa855f7, 1.4, 20);
+            purpleLight.position.set(0, 5, -4);
+            scene.add(purpleLight);
+        }}
+
+        function buildOfficeRoom() {{
+            // Lantai Kantor Karpet Premium Dark Slate
+            const floorGeo = new THREE.PlaneGeometry(32, 26);
+            const floorMat = new THREE.MeshStandardMaterial({{
+                color: 0x0f172a,
+                roughness: 0.85,
+                metalness: 0.15
+            }});
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Garis Grid Ubin Kantor Minimalis
+            const gridHelper = new THREE.GridHelper(32, 32, 0x1e293b, 0x1e293b);
+            gridHelper.position.y = 0.01;
+            scene.add(gridHelper);
+
+            // Dinding Kaca Belakang dengan Pemandangan Kota Malam (City Skyline)
+            const wallMat = new THREE.MeshStandardMaterial({{ color: 0x090d16, roughness: 0.5 }});
+
+            // Dinding Kiri
+            const leftWallGeo = new THREE.BoxGeometry(0.5, 9, 26);
+            const leftWall = new THREE.Mesh(leftWallGeo, wallMat);
+            leftWall.position.set(-16, 4.5, 0);
+            leftWall.receiveShadow = true;
+            scene.add(leftWall);
+
+            // Dinding Belakang (Kaca Panorama)
+            const backWallGeo = new THREE.BoxGeometry(32, 9, 0.5);
+            const backWall = new THREE.Mesh(backWallGeo, wallMat);
+            backWall.position.set(0, 4.5, -13);
+            backWall.receiveShadow = true;
+            scene.add(backWall);
+
+            // Whiteboard Saham di Dinding Kiri
+            const wbGeo = new THREE.BoxGeometry(0.1, 4, 8);
+            const wbMat = new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.2 }});
+            const wb = new THREE.Mesh(wbGeo, wbMat);
+            wb.position.set(-15.7, 4.5, -2);
+            scene.add(wb);
+
+            // Server Rack AI 24/7 di Sudut Kantor dengan Lampu Blinking
+            const rackGeo = new THREE.BoxGeometry(1.6, 6, 2.2);
+            const rackMat = new THREE.MeshStandardMaterial({{ color: 0x020617, metalness: 0.8, roughness: 0.2 }});
+            const rack = new THREE.Mesh(rackGeo, rackMat);
+            rack.position.set(-14.5, 3, -11);
+            rack.castShadow = true;
+            scene.add(rack);
+
+            // LED Blinking Server
+            for (let i = 0; i < 6; i++) {{
+                const ledGeo = new THREE.SphereGeometry(0.06, 8, 8);
+                const ledMat = new THREE.MeshBasicMaterial({{ color: i % 2 === 0 ? 0x10b981 : 0x06b6d4 }});
+                const led = new THREE.Mesh(ledGeo, ledMat);
+                led.position.set(-13.65, 1.5 + (i * 0.7), -11.5 + (i % 3 * 0.4));
+                scene.add(led);
             }}
-            if (counterEl) counterEl.innerText = countdown + 's';
-        }}, 1000);
 
-        async function fetchLiveUpdates() {{
+            // Coffee & Water Dispenser Lounge Corner
+            buildLoungeArea();
+        }}
+
+        function buildLoungeArea() {{
+            // Meja Bar Kopi & Dispenser Air Galon
+            const barGeo = new THREE.BoxGeometry(3, 1.8, 6);
+            const barMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.6 }});
+            const bar = new THREE.Mesh(barGeo, barMat);
+            bar.position.set(13.8, 0.9, -9);
+            bar.castShadow = true;
+            bar.receiveShadow = true;
+            scene.add(bar);
+
+            // Dispenser Galon Air Biru
+            const dispBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), new THREE.MeshStandardMaterial({{ color: 0xf8fafc }}));
+            dispBody.position.set(13.8, 2.6, -11);
+            scene.add(dispBody);
+
+            const waterBottle = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.9, 16), new THREE.MeshStandardMaterial({{ color: 0x0284c7, transparent: true, opacity: 0.7 }}));
+            waterBottle.position.set(13.8, 3.8, -11);
+            scene.add(waterBottle);
+
+            // Sofa Santai Karyawan
+            const sofaGeo = new THREE.BoxGeometry(2.5, 1.2, 5);
+            const sofaMat = new THREE.MeshStandardMaterial({{ color: 0x334155, roughness: 0.8 }});
+            const sofa = new THREE.Mesh(sofaGeo, sofaMat);
+            sofa.position.set(13.8, 0.6, -3);
+            sofa.castShadow = true;
+            scene.add(sofa);
+
+            // Pot Tanaman Hias Hijau (Office Plant)
+            const potMat = new THREE.MeshStandardMaterial({{ color: 0x475569 }});
+            const plantMat = new THREE.MeshStandardMaterial({{ color: 0x15803d, roughness: 0.9 }});
+            const pot1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.35, 1, 16), potMat);
+            pot1.position.set(14, 0.5, 10);
+            scene.add(pot1);
+            const leaves1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8), plantMat);
+            leaves1.position.set(14, 1.4, 10);
+            scene.add(leaves1);
+        }}
+
+        function buildWorkstationsAndCharacters(agentsList) {{
+            agentsList.forEach(ag => {{
+                const isJudge = ag.id === 'ARIF';
+                const pos = ag.pos;
+
+                // Group untuk seluruh unit workstation
+                const deskGroup = new THREE.Group();
+                deskGroup.position.set(pos[0], pos[1], pos[2]);
+
+                // 1. Meja Kayu (Desk Slab)
+                const deskWidth = isJudge ? 3.6 : 2.5;
+                const deskDepth = isJudge ? 1.8 : 1.4;
+                const deskTopMat = new THREE.MeshStandardMaterial({{
+                    color: isJudge ? 0x451a03 : 0x1e293b,
+                    roughness: 0.4,
+                    metalness: 0.1
+                }});
+                const deskTop = new THREE.Mesh(new THREE.BoxGeometry(deskWidth, 0.12, deskDepth), deskTopMat);
+                deskTop.position.set(0, 1.3, 0);
+                deskTop.castShadow = true;
+                deskTop.receiveShadow = true;
+                deskGroup.add(deskTop);
+
+                // Kaki Meja Besi
+                const legMat = new THREE.MeshStandardMaterial({{ color: 0x0f172a, metalness: 0.8 }});
+                const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, deskDepth * 0.9), legMat);
+                leg1.position.set(-deskWidth / 2 + 0.15, 0.65, 0);
+                deskGroup.add(leg1);
+                const leg2 = leg1.clone();
+                leg2.position.set(deskWidth / 2 - 0.15, 0.65, 0);
+                deskGroup.add(leg2);
+
+                // 2. Dual Monitor Komputer di Meja
+                const monitorGroup = new THREE.Group();
+                monitorGroup.position.set(0, 1.36, -0.25);
+
+                // Monitor Utama (Layar Chart)
+                const monFrame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.75, 0.06), new THREE.MeshStandardMaterial({{ color: 0x020617 }}));
+                monFrame.position.set(0, 0.55, 0);
+                monFrame.castShadow = true;
+                monitorGroup.add(monFrame);
+
+                // Layar Menyala Candlestick
+                const screenMat = new THREE.MeshBasicMaterial({{ color: ag.status === 'WORKING' ? 0x10b981 : 0x0284c7 }});
+                const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.12, 0.68), screenMat);
+                screen.position.set(0, 0.55, 0.035);
+                monitorGroup.add(screen);
+
+                // Monitor Kedua (Vertikal / Terminal Kode)
+                const monSideFrame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.9, 0.06), new THREE.MeshStandardMaterial({{ color: 0x020617 }}));
+                monSideFrame.position.set(0.95, 0.6, 0.15);
+                monSideFrame.rotation.y = -0.35;
+                monitorGroup.add(monSideFrame);
+
+                const screenSide = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.82), new THREE.MeshBasicMaterial({{ color: 0x06b6d4 }}));
+                screenSide.position.set(0.95, 0.6, 0.185);
+                screenSide.rotation.y = -0.35;
+                monitorGroup.add(screenSide);
+
+                // Tiang Monitor
+                const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.4), legMat);
+                stand.position.set(0, 0.2, 0);
+                monitorGroup.add(stand);
+                deskGroup.add(monitorGroup);
+
+                // Keyboard RGB & Mouse
+                const kb = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.03, 0.3), new THREE.MeshStandardMaterial({{ color: 0x0f172a }}));
+                kb.position.set(0, 1.38, 0.25);
+                deskGroup.add(kb);
+
+                const mouseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.18), new THREE.MeshStandardMaterial({{ color: 0x334155 }}));
+                mouseMesh.position.set(0.55, 1.38, 0.25);
+                deskGroup.add(mouseMesh);
+
+                // Cangkir Kopi Karyawan
+                const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.15, 12), new THREE.MeshStandardMaterial({{ color: 0xf8fafc }}));
+                mug.position.set(-0.7, 1.44, 0.25);
+                deskGroup.add(mug);
+
+                if (isJudge) {{
+                    // Palu Hakim Kayu di Meja
+                    const gavel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.12), new THREE.MeshStandardMaterial({{ color: 0xb45309 }}));
+                    gavel.position.set(0.8, 1.42, 0.4);
+                    deskGroup.add(gavel);
+                }}
+
+                // 3. Kursi Kantor Ergonomis (Swivel Chair)
+                const chairMat = new THREE.MeshStandardMaterial({{ color: isJudge ? 0x1e1b4b : 0x1e293b, roughness: 0.7 }});
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.8), chairMat);
+                seat.position.set(0, 0.9, 0.85);
+                deskGroup.add(seat);
+
+                const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.1, 0.12), chairMat);
+                backrest.position.set(0, 1.5, 1.25);
+                deskGroup.add(backrest);
+
+                // 4. Karakter Karyawan AI 3D (Wujud Orang Duduk & Mengetik)
+                const charGroup = new THREE.Group();
+                charGroup.position.set(0, 0.9, 0.8);
+
+                // Badan / Kemeja Karyawan
+                const shirtMat = new THREE.MeshStandardMaterial({{ color: ag.hex, roughness: 0.6 }});
+                const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.4), shirtMat);
+                torso.position.set(0, 0.45, 0);
+                torso.castShadow = true;
+                charGroup.add(torso);
+
+                // Kepala & Wajah
+                const skinMat = new THREE.MeshStandardMaterial({{ color: 0xfed7aa, roughness: 0.8 }});
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), skinMat);
+                head.position.set(0, 1.05, 0.02);
+                head.castShadow = true;
+                charGroup.add(head);
+
+                // Rambut Karyawan
+                const hairMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.9 }});
+                const hair = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
+                hair.position.set(0, 1.12, 0.02);
+                charGroup.add(hair);
+
+                // Lengan Kiri & Kanan (Animated Typing)
+                const armMat = shirtMat;
+                const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), armMat);
+                armL.position.set(-0.38, 0.35, -0.15);
+                armL.rotation.x = -Math.PI / 3;
+                charGroup.add(armL);
+
+                const armR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), armMat);
+                armR.position.set(0.38, 0.35, -0.15);
+                armR.rotation.x = -Math.PI / 3;
+                charGroup.add(armR);
+
+                deskGroup.add(charGroup);
+
+                // Metadata untuk interaksi klik
+                deskGroup.userData = {{
+                    agentId: ag.id,
+                    agentData: ag,
+                    armL: armL,
+                    armR: armR,
+                    head: head,
+                    charGroup: charGroup,
+                    screen: screen
+                }};
+
+                deskMeshes.push(deskTop); // Target click raycaster
+                deskTop.userData = deskGroup.userData;
+
+                characterGroups.push(deskGroup.userData);
+                scene.add(deskGroup);
+
+                // Buat 2D Floating Name Tag di atas meja
+                createFloatingTag(ag);
+            }});
+        }}
+
+        function buildWalkingOfficeEmployees() {{
+            // Tambahkan 2 karakter karyawan yang berjalan santai di koridor kantor agar suasana ramai dan sibuk
+            const walker1 = createWalkingHuman(0x38bdf8, [-8, 0, 8], [8, 0, 8]);
+            scene.add(walker1.group);
+            walkingHumans.push(walker1);
+
+            const walker2 = createWalkingHuman(0xf43f5e, [13.5, 0, -2], [13.5, 0, -8]);
+            scene.add(walker2.group);
+            walkingHumans.push(walker2);
+        }}
+
+        function createWalkingHuman(shirtColor, startPos, endPos) {{
+            const group = new THREE.Group();
+            group.position.set(startPos[0], startPos[1], startPos[2]);
+
+            const bodyMat = new THREE.MeshStandardMaterial({{ color: shirtColor }});
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), bodyMat);
+            torso.position.y = 1.35;
+            torso.castShadow = true;
+            group.add(torso);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshStandardMaterial({{ color: 0xfed7aa }}));
+            head.position.y = 1.9;
+            group.add(head);
+
+            // Kaki
+            const legMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b }});
+            const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.8, 0.16), legMat);
+            legL.position.set(-0.16, 0.5, 0);
+            group.add(legL);
+
+            const legR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.8, 0.16), legMat);
+            legR.position.set(0.16, 0.5, 0);
+            group.add(legR);
+
+            return {{
+                group: group,
+                start: startPos,
+                end: endPos,
+                progress: 0,
+                speed: 0.0035 + Math.random() * 0.002,
+                legL: legL,
+                legR: legR
+            }};
+        }}
+
+        function createFloatingTag(ag) {{
+            const tag = document.createElement('div');
+            tag.className = 'agent-nametag';
+            tag.id = `tag-${{ag.id}}`;
+
+            const isBusy = ag.status === 'WORKING' || ag.status === 'DECIDING';
+            const statusClass = isBusy ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : 'bg-slate-800/80 text-slate-300 border-slate-700';
+            const dotClass = isBusy ? 'bg-emerald-400 animate-ping' : 'bg-slate-400';
+
+            tag.innerHTML = `
+                <div class="px-2.5 py-1 rounded-xl glass-panel border shadow-lg flex items-center gap-1.5 cursor-pointer pointer-events-auto transform hover:scale-105 transition" onclick="openDrawerById('${{ag.id}}')">
+                    <span class="relative flex h-2 w-2">
+                        <span class="${{dotClass}} absolute inline-flex h-full w-full rounded-full opacity-75"></span>
+                        <span class="${{dotClass}} relative inline-flex rounded-full h-2 w-2"></span>
+                    </span>
+                    <span class="text-[11px] font-bold text-white">${{ag.name.split(' ')[0]}}</span>
+                    <span class="text-[9px] px-1.5 py-0.2 rounded-full border font-mono ${{statusClass}}">${{ag.status}}</span>
+                </div>
+            `;
+            document.getElementById('tags-container').appendChild(tag);
+        }}
+
+        function updateFloatingTagsPosition() {{
+            initialAgents.forEach(ag => {{
+                const tag = document.getElementById(`tag-${{ag.id}}`);
+                if (!tag) return;
+
+                const worldPos = new THREE.Vector3(ag.pos[0], ag.pos[1] + 2.7, ag.pos[2]);
+                worldPos.project(camera);
+
+                // Jika di belakang kamera, sembunyikan
+                if (worldPos.z > 1) {{
+                    tag.style.display = 'none';
+                    return;
+                }}
+
+                tag.style.display = 'block';
+                const x = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-(worldPos.y * 0.5) + 0.5) * window.innerHeight;
+                tag.style.left = `${{x}}px`;
+                tag.style.top = `${{y}}px`;
+            }});
+        }}
+
+        function onWindowResize() {{
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }}
+
+        function onCanvasClick(event) {{
+            // Jangan trigger jika klik tombol UI
+            if (event.target.closest('button') || event.target.closest('a') || event.target.closest('#agent-drawer')) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(deskMeshes, true);
+
+            if (intersects.length > 0) {{
+                const hit = intersects[0].object;
+                if (hit.userData && hit.userData.agentId) {{
+                    openDrawerById(hit.userData.agentId);
+                }}
+            }}
+        }}
+
+        function openDrawerById(agentId) {{
+            selectedAgentId = agentId;
+            const ag = initialAgents.find(a => a.id === agentId);
+            if (!ag) return;
+
+            document.getElementById('drawer-name').innerText = ag.name;
+            document.getElementById('drawer-role').innerText = ag.role;
+            document.getElementById('drawer-model').innerText = ag.model;
+            document.getElementById('drawer-speech').innerText = `"${{ag.speech}}"`;
+            document.getElementById('drawer-task').innerText = ag.current_task;
+            document.getElementById('drawer-cap-num').innerText = ag.capacity;
+            document.getElementById('drawer-cap-bar').style.width = ag.capacity + '%';
+
+            const badge = document.getElementById('drawer-status-badge');
+            badge.innerText = ag.status;
+            badge.className = ag.status === 'WORKING' || ag.status === 'DECIDING'
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700';
+
+            document.getElementById('agent-drawer').classList.remove('translate-x-full');
+
+            // Gerakkan kamera fokus ke meja karyawan
+            const targetPos = ag.pos;
+            gsapCameraTo(targetPos[0] + 5, targetPos[1] + 4, targetPos[2] + 6, targetPos[0], targetPos[1] + 1.2, targetPos[2]);
+        }}
+
+        function closeDrawer() {{
+            document.getElementById('agent-drawer').classList.add('translate-x-full');
+            selectedAgentId = null;
+        }}
+
+        function setCameraView(viewName) {{
+            closeDrawer();
+            if (viewName === 'overview') {{
+                gsapCameraTo(16, 14, 18, 0, 1.5, 0);
+            }} else if (viewName === 'judge') {{
+                gsapCameraTo(0, 5, 2, 0, 1.5, -3.5);
+            }} else if (viewName === 'scalper') {{
+                gsapCameraTo(-9, 5, 4, -4.5, 1.3, 0.5);
+            }} else if (viewName === 'auditor') {{
+                gsapCameraTo(9, 5, 4, 4.5, 1.3, 0.5);
+            }} else if (viewName === 'lounge') {{
+                gsapCameraTo(16, 4, -5, 13.8, 1.5, -7);
+            }}
+        }}
+
+        function gsapCameraTo(x, y, z, tx, ty, tz) {{
+            // Smooth Camera Transition Manual (lerp loop)
+            const startPos = camera.position.clone();
+            const endPos = new THREE.Vector3(x, y, z);
+            const startTar = controls.target.clone();
+            const endTar = new THREE.Vector3(tx, ty, tz);
+
+            let t = 0;
+            const anim = () => {{
+                t += 0.04;
+                camera.position.lerpVectors(startPos, endPos, easeInOutCubic(Math.min(t, 1)));
+                controls.target.lerpVectors(startTar, endTar, easeInOutCubic(Math.min(t, 1)));
+                if (t < 1) {{
+                    requestAnimationFrame(anim);
+                }}
+            }};
+            anim();
+        }}
+
+        function easeInOutCubic(x) {{
+            return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+        }}
+
+        // Audio Ambience Keyboard Typing Kantor (Web Audio API Synthesizer)
+        function toggleAudio() {{
+            if (!audioCtx) {{
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }}
+            if (audioCtx.state === 'suspended') {{
+                audioCtx.resume();
+            }}
+
+            isAudioPlaying = !isAudioPlaying;
+            const btn = document.getElementById('btn-audio');
+
+            if (isAudioPlaying) {{
+                btn.innerHTML = '🔊 <span class="hidden sm:inline">Suara Kantor: ON</span>';
+                btn.classList.add('bg-cyan-500/20', 'text-cyan-400');
+                // Interval bunyi ketikan keyboard acak
+                audioInterval = setInterval(() => {{
+                    playKeyClick();
+                }}, 140);
+            }} else {{
+                btn.innerHTML = '🔇 <span class="hidden sm:inline">Suara Kantor</span>';
+                btn.classList.remove('bg-cyan-500/20', 'text-cyan-400');
+                clearInterval(audioInterval);
+            }}
+        }}
+
+        function playKeyClick() {{
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            // Frekuensi click ketikan mekanikal
+            osc.frequency.setValueAtTime(400 + Math.random() * 600, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.015, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.04);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+        }}
+
+        // Loop Animasi 3D (60 FPS)
+        let clock = new THREE.Clock();
+        function animate() {{
+            requestAnimationFrame(animate);
+
+            const elapsedTime = clock.getElapsedTime();
+
+            // 1. Animasi Tangan Mengetik di Meja & Kepala Mengangguk
+            characterGroups.forEach((cg, idx) => {{
+                const isWorking = cg.agentData.status === 'WORKING' || cg.agentData.status === 'DECIDING';
+                if (isWorking) {{
+                    const speed = 12 + (idx % 4);
+                    // Tangan mengetik bergantian
+                    cg.armL.rotation.x = -Math.PI / 3 + Math.sin(elapsedTime * speed) * 0.12;
+                    cg.armR.rotation.x = -Math.PI / 3 + Math.cos(elapsedTime * speed) * 0.12;
+                    // Kepala fokus sedikit bergerak memantau layar
+                    cg.head.rotation.y = Math.sin(elapsedTime * 1.5 + idx) * 0.15;
+                    cg.head.position.y = 1.05 + Math.sin(elapsedTime * 4) * 0.01;
+                }} else {{
+                    // Mode Idle: Rileks
+                    cg.armL.rotation.x = -Math.PI / 4;
+                    cg.armR.rotation.x = -Math.PI / 4;
+                    cg.head.rotation.y = Math.sin(elapsedTime * 0.6 + idx) * 0.08;
+                }}
+            }});
+
+            // 2. Animasi Karyawan yang Berjalan di Koridor
+            walkingHumans.forEach(w => {{
+                w.progress += w.speed;
+                if (w.progress > 1) {{
+                    w.progress = 0;
+                    // Tukar arah jalan bolak-balik
+                    const tmp = w.start;
+                    w.start = w.end;
+                    w.end = tmp;
+                }}
+                w.group.position.x = w.start[0] + (w.end[0] - w.start[0]) * w.progress;
+                w.group.position.z = w.start[2] + (w.end[2] - w.start[2]) * w.progress;
+
+                // Ayunan kaki saat berjalan
+                const legSwing = Math.sin(elapsedTime * 8) * 0.4;
+                w.legL.rotation.x = legSwing;
+                w.legR.rotation.x = -legSwing;
+            }});
+
+            // 3. Update Posisi Label 2D Nama di Layar
+            updateFloatingTagsPosition();
+
+            controls.update();
+            renderer.render(scene, camera);
+        }}
+
+        // Inisialisasi 3D saat dokumen siap
+        window.addEventListener('DOMContentLoaded', init3D);
+
+        // Polling Real-time Update tiap 3 detik ke /api/live
+        setInterval(async () => {{
             try {{
                 const res = await fetch('/api/live');
                 if (!res.ok) return;
                 const data = await res.json();
                 if (!data || !data.office_metrics) return;
 
-                const loadEl = document.getElementById('stat-office-load');
-                if (loadEl) loadEl.innerText = data.office_metrics.overall_load_pct + '%';
+                // Update metrik beban
+                document.getElementById('stat-load-text').innerText = data.office_metrics.overall_load_pct + '%';
+                document.getElementById('stat-load-bar').style.width = data.office_metrics.overall_load_pct + '%';
+                document.getElementById('stat-busy-text').innerText = data.office_metrics.busy_agents;
+                document.getElementById('stat-idle-text').innerText = data.office_metrics.idle_agents;
 
-                const busyEl = document.getElementById('stat-busy');
-                if (busyEl) busyEl.innerText = data.office_metrics.busy_agents;
-
-                const cardBusy = document.getElementById('card-busy-count');
-                if (cardBusy) cardBusy.innerHTML = data.office_metrics.busy_agents + ' <span class="text-xs text-slate-500 font-sans">Agent</span>';
-
-                const cardIdle = document.getElementById('card-idle-count');
-                if (cardIdle) cardIdle.innerHTML = data.office_metrics.idle_agents + ' <span class="text-xs text-slate-500 font-sans">Agent</span>';
-
+                // Update status karyawan
                 if (data.agents) {{
-                    data.agents.forEach(ag => {{
-                        const desk = document.querySelector(`.agent-desk[data-agent-id="${{ag.id}}"]`);
-                        if (desk) {{
-                            const speech = desk.querySelector('.agent-speech');
-                            if (speech) speech.innerText = '"' + ag.speech + '"';
+                    data.agents.forEach(updatedAg => {{
+                        const local = initialAgents.find(a => a.id === updatedAg.id);
+                        if (local) {{
+                            local.status = updatedAg.status;
+                            local.capacity = updatedAg.capacity;
+                            local.speech = updatedAg.speech;
+                            local.current_task = updatedAg.current_task;
 
-                            const capText = desk.querySelector('.agent-capacity-text');
-                            if (capText) capText.innerText = ag.capacity + '%';
+                            // Update live tag
+                            const tag = document.getElementById(`tag-${{local.id}}`);
+                            if (tag) {{
+                                const isBusy = local.status === 'WORKING' || local.status === 'DECIDING';
+                                const badge = tag.querySelector('span.font-mono');
+                                if (badge) {{
+                                    badge.innerText = local.status;
+                                    badge.className = isBusy
+                                        ? 'text-[9px] px-1.5 py-0.2 rounded-full border font-mono bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                                        : 'text-[9px] px-1.5 py-0.2 rounded-full border font-mono bg-slate-800/80 text-slate-300 border-slate-700';
+                                }}
+                            }}
 
-                            const capBar = desk.querySelector('.agent-capacity-bar');
-                            if (capBar) capBar.style.width = ag.capacity + '%';
-
-                            const task = desk.querySelector('.agent-task');
-                            if (task) task.innerText = ag.current_task;
+                            // Update drawer jika sedang terbuka untuk agen ini
+                            if (selectedAgentId === local.id) {{
+                                document.getElementById('drawer-speech').innerText = `"${{local.speech}}"`;
+                                document.getElementById('drawer-task').innerText = local.current_task;
+                                document.getElementById('drawer-cap-num').innerText = local.capacity;
+                                document.getElementById('drawer-cap-bar').style.width = local.capacity + '%';
+                            }}
                         }}
                     }});
                 }}
-            }} catch (err) {{
-                console.log('Sync err:', err);
+            }} catch(e) {{
+                console.log('Sync err:', e);
             }}
-        }}
+        }}, 3000);
     </script>
 </body>
 </html>
