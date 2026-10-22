@@ -553,9 +553,6 @@ def render_live_office_html():
             // 7. Meja & Karakter Manusia 3D Halus (Stylized Smooth Avatars)
             buildSmoothWorkstationsAndAvatars(initialAgents);
 
-            // 8. Karyawan yang Berjalan Santai (Animasi Halus)
-            buildWalkingAvatars();
-
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
@@ -844,22 +841,26 @@ def render_live_office_html():
                     workstation.add(gavelHead);
                 }}
 
-                // 3. KURSI KANTOR ERGONOMIS PUTAR (CURVED SWIVEL CHAIR)
+                // 3. KURSI KANTOR ERGONOMIS PUTAR (SLIM MODERN CHAIR)
                 const chairMat = new THREE.MeshStandardMaterial({{ color: isJudge ? 0x2e1065 : 0x1e293b, roughness: 0.6 }});
 
                 // Dudukan Kursi Membulat Lembut
-                const seatCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.44, 0.12, 24), chairMat);
+                const seatCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.36, 0.08, 24), chairMat);
                 seatCushion.position.set(0, 0.88, 0.72);
                 workstation.add(seatCushion);
 
-                // Sandaran Punggung Melengkung Halus
-                const backCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24, 1, false, 0, Math.PI), chairMat);
-                backCushion.rotation.y = Math.PI / 2;
-                backCushion.position.set(0, 1.42, 1.02);
+                // Sandaran Punggung Slim Mesh (Tipis & Rapi di Belakang Punggung, TIDAK Menutupi Badan)
+                const backCushion = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.04), chairMat);
+                backCushion.position.set(0, 1.4, 0.98);
                 workstation.add(backCushion);
 
+                // Tiang Sandaran Ramping
+                const backBar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.55, 12), chromeLegMat);
+                backBar.position.set(0, 1.1, 0.96);
+                workstation.add(backBar);
+
                 // Tiang Hidrolik Kursi Bintang 5
-                const hydPost = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.8, 16), chromeLegMat);
+                const hydPost = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 16), chromeLegMat);
                 hydPost.position.set(0, 0.4, 0.72);
                 workstation.add(hydPost);
 
@@ -972,63 +973,6 @@ def render_live_office_html():
             }});
         }}
 
-        function buildWalkingAvatars() {{
-            // Karakter Manusia 3D Halus yang Berjalan di Koridor
-            const walker1 = createSmoothWalker(0x0284c7, 0xfed7aa, [-7, 0, 7.5], [7, 0, 7.5]);
-            scene.add(walker1.group);
-            walkingHumans.push(walker1);
-
-            const walker2 = createSmoothWalker(0xf43f5e, 0xfbcfe8, [14, 0, -2], [14, 0, -8]);
-            scene.add(walker2.group);
-            walkingHumans.push(walker2);
-        }}
-
-        function createSmoothWalker(shirtColor, skinTone, startPos, endPos) {{
-            const group = new THREE.Group();
-            group.position.set(startPos[0], startPos[1], startPos[2]);
-
-            // Badan Tapered Halus
-            const bodyMat = new THREE.MeshStandardMaterial({{ color: shirtColor, roughness: 0.6 }});
-            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.22, 0.75, 20), bodyMat);
-            torso.position.y = 1.35;
-            torso.castShadow = true;
-            group.add(torso);
-
-            // Kepala Bulat Halus
-            const skinMat = new THREE.MeshStandardMaterial({{ color: skinTone, roughness: 0.85 }});
-            const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 24, 24), skinMat);
-            head.position.y = 1.9;
-            head.castShadow = true;
-            group.add(head);
-
-            // Rambut
-            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 24, 0, Math.PI * 2, 0, Math.PI * 0.6), new THREE.MeshStandardMaterial({{ color: 0x1e293b }}));
-            hair.position.y = 1.95;
-            group.add(hair);
-
-            // Kaki Silinder Halus
-            const legMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b }});
-            const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.85, 16), legMat);
-            legL.position.set(-0.14, 0.45, 0);
-            legL.castShadow = true;
-            group.add(legL);
-
-            const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.85, 16), legMat);
-            legR.position.set(0.14, 0.45, 0);
-            legR.castShadow = true;
-            group.add(legR);
-
-            return {{
-                group: group,
-                start: startPos,
-                end: endPos,
-                progress: 0,
-                speed: 0.0035 + Math.random() * 0.0015,
-                legL: legL,
-                legR: legR
-            }};
-        }}
-
         function createFloatingTag(ag) {{
             const tag = document.createElement('div');
             tag.className = 'agent-nametag';
@@ -1039,13 +983,13 @@ def render_live_office_html():
             const dotClass = isBusy ? 'bg-emerald-400 animate-ping' : 'bg-slate-400';
 
             tag.innerHTML = `
-                <div class="px-3 py-1.5 rounded-2xl glass-panel border shadow-xl flex items-center gap-2 cursor-pointer pointer-events-auto transform hover:scale-105 transition" onclick="openDrawerById('${{ag.id}}')">
-                    <span class="relative flex h-2.5 w-2.5">
+                <div class="px-2.5 py-1 rounded-xl glass-panel border shadow-lg flex items-center gap-1.5 cursor-pointer pointer-events-auto transform hover:scale-105 transition" onclick="openDrawerById('${{ag.id}}')">
+                    <span class="relative flex h-2 w-2">
                         <span class="${{dotClass}} absolute inline-flex h-full w-full rounded-full opacity-75"></span>
-                        <span class="${{dotClass}} relative inline-flex rounded-full h-2.5 w-2.5"></span>
+                        <span class="${{dotClass}} relative inline-flex rounded-full h-2 w-2"></span>
                     </span>
-                    <span class="text-xs font-bold text-white">${{ag.name.split(' ')[0]}}</span>
-                    <span class="text-[9px] px-2 py-0.5 rounded-full border font-mono font-bold ${{statusClass}}">${{ag.status}}</span>
+                    <span class="text-[11px] font-bold text-white">${{ag.name.split(' ')[0]}}</span>
+                    <span class="text-[9px] px-1.5 py-0.2 rounded-full border font-mono font-bold ${{statusClass}}">${{ag.status}}</span>
                 </div>
             `;
             document.getElementById('tags-container').appendChild(tag);
@@ -1056,7 +1000,8 @@ def render_live_office_html():
                 const tag = document.getElementById(`tag-${{ag.id}}`);
                 if (!tag) return;
 
-                const worldPos = new THREE.Vector3(ag.pos[0], ag.pos[1] + 2.75, ag.pos[2]);
+                // Tag melayang tinggi di atas monitor workstation, TIDAK menutupi badan karyawan
+                const worldPos = new THREE.Vector3(ag.pos[0], ag.pos[1] + 3.8, ag.pos[2] - 0.25);
                 worldPos.project(camera);
 
                 if (worldPos.z > 1) {{
@@ -1226,23 +1171,6 @@ def render_live_office_html():
                     cg.armR.rotation.x = Math.PI / 4;
                     cg.head.rotation.y = Math.sin(elapsedTime * 0.5 + idx) * 0.06;
                 }}
-            }});
-
-            // 2. Animasi Karyawan Berjalan Halus di Koridor
-            walkingHumans.forEach(w => {{
-                w.progress += w.speed;
-                if (w.progress > 1) {{
-                    w.progress = 0;
-                    const tmp = w.start;
-                    w.start = w.end;
-                    w.end = tmp;
-                }}
-                w.group.position.x = w.start[0] + (w.end[0] - w.start[0]) * w.progress;
-                w.group.position.z = w.start[2] + (w.end[2] - w.start[2]) * w.progress;
-
-                const legSwing = Math.sin(elapsedTime * 7) * 0.35;
-                w.legL.rotation.x = legSwing;
-                w.legR.rotation.x = -legSwing;
             }});
 
             updateFloatingTagsPosition();
