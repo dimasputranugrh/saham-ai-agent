@@ -380,7 +380,7 @@ def run_5_ai_panel_consensus(
 
     works_pct = round(weighted_buy_score / max(0.01, total_weight), 1)
 
-    # Keputusan Hakim Ketua (Arif - Final Decider)
+    # Keputusan Chief Arthur (Supreme Decider)
     if buy_count >= 4 and works_pct >= 65.0 and not has_degraded:
         final_decision = "BUY"
         verdict_label = f"🟢 SANGAT LAYAK BELI ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
@@ -400,7 +400,7 @@ def run_5_ai_panel_consensus(
         verdict_label = f"🔴 JANGAN BELI DULU / WAIT ({buy_count}/{total_ai} AI Setuju — Cuma {works_pct:.1f}% Works)"
         chief_summary = (
             f"Hanya {buy_count} dari {total_ai} AI yang berani beli (skor kelayakan cuma {works_pct:.1f}%). "
-            f"Hakim Ketua memutuskan TAHAN DULU demi mengamankan modal Bos."
+            f"Chief Arthur memutuskan TAHAN DULU demi mengamankan modal Bos."
         )
 
     if mem_ctx and mem_ctx.get("analysis_id"):
@@ -464,11 +464,11 @@ def format_panel_consensus_section(consensus: dict[str, Any]) -> str:
         )
     lines.extend([
         "",
-        "⚖️ *KEPUTUSAN HAKIM KETUA (FINAL DECIDER):*",
+        "⚖️ *KEPUTUSAN CHIEF ARTHUR (SUPREME ARBITER):*",
         f"• *Suara Setuju Beli:* *{consensus['buy_count']} dari {consensus['total_ai']} AI ({consensus['agreement_pct']:.0f}%)*",
         f"• *Persentase Kelayakan Beli:* *{consensus['works_pct']:.1f}% Works*",
         f"• *Vonis Akhir:* *{consensus['verdict_label']}*",
-        f"• *Alasan Hakim Ketua:* {consensus['chief_summary']}",
+        f"• *Alasan Chief Arthur:* {consensus['chief_summary']}",
     ])
     return "\n".join(lines)
 

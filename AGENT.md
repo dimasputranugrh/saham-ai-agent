@@ -14,7 +14,7 @@ Project ini adalah **AI Stock Agent untuk Saham Indonesia (BEI/IDX)** dengan fit
 
 ---
 
-## 2. Struktur Tim 5 AI + 1 Hakim Ketua (Ensemble Consensus)
+## 2. Struktur Tim 5 AI + 1 Supreme Arbiter (Ensemble Consensus)
 Analisis saham tidak hanya mengandalkan 1 AI, melainkan melalui sidang panel 5 AI lintas perusahaan:
 
 1. **`AI_1` — Momentum Scalper:** `gemini-3.6-flash` (Google) $\rightarrow$ Fokus lonjakan volume intraday & VWAP.
@@ -22,7 +22,8 @@ Analisis saham tidak hanya mengandalkan 1 AI, melainkan melalui sidang panel 5 A
 3. **`AI_3` — Bandar & Aliran Dana:** `nvidia/nemotron-3-ultra-550b-a55b:free` via OpenRouter (NVIDIA 550B) $\rightarrow$ Membaca akumulasi bandar.
 4. **`AI_4` — Trend & Swing Guard:** `qwen/qwen3.8-27b` via Groq (Alibaba Qwen 3.8) $\rightarrow$ Menjaga keselarasan tren harian & Risk/Reward.
 5. **`AI_5` — Quant Bayesian Memory:** `quant-bayesian-v1` (Lokal Python) $\rightarrow$ Murni rumus matematika & database memori tanpa bias LLM.
-6. **Hakim Ketua (Arif / Final Decider):** Menghitung suara setuju (`buy_count / 5`) dan persentase kelayakan (`% Works`), lalu memutuskan **BUY** (jika $\ge 3$ AI setuju dan $\ge 60\%$ Works) atau **WAIT**.
+6. **Chief Arthur (Supreme Decider / Final Arbiter):** Menghitung suara setuju (`buy_count / 5`) dan persentase kelayakan (`% Works`), lalu memutuskan **BUY** (jika $\ge 3$ AI setuju dan $\ge 60\%$ Works) atau **WAIT**.
+7. **Tim DSU Harian:** Bastian (Macro Intel), Serena (Market Screener), Damian (Chief Risk Officer), dan Chief Arthur.
 
 ---
 
@@ -68,10 +69,10 @@ File: [`agents/dev_architect.py`](file:///home/dimas/projects/saham-ai-agent/age
 ---
 
 ## 6. Daftar Perintah Telegram Bot (@Agent_d_saham_bot)
-- `/cek <KODE>`: Bedah saham + Sidang Voting 5 AI (`% Works`) + Keputusan Hakim Ketua.
+- `/cek <KODE>`: Bedah saham + Sidang Voting 5 AI (`% Works`) + Vonis Chief Arthur.
 - `/scan`: Pindai saham yang layak dibeli jam ini.
 - `/berita` atau `/sektor`: Radar perbandingan berita 7 sektor & peluang Swing Masa Depan.
-- `/dsu`: Laporan rapat harian pagi (Budi, Sari, Hendra, Arif).
+- `/dsu`: Laporan rapat harian pagi (Bastian, Serena, Damian, Chief Arthur).
 - `/rapor_ai`: Rapor mingguan ranking akurasi 5 AI (siapa paling jago vs siapa harus diganti).
 - `/ganti_ai <SLOT> <MODEL>`: Ganti AI yang jelek dengan model gratis lain.
 - `/evaluasi`: Dashboard performa strategi, Win Rate, dan Profit Factor.

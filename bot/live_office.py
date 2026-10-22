@@ -19,8 +19,8 @@ def get_live_office_data():
     agents = [
         {
             "id": "ARIF",
-            "name": "Hakim Ketua Arif",
-            "role": "Chief Decider & Consensus",
+            "name": "Chief Arthur (Supreme Decider)",
+            "role": "Chief Investment Arbiter & Consensus",
             "model": "Ensemble Judge (>=3 Buy & >=60%)",
             "color": "#a855f7",
             "hex": 0xa855f7,
@@ -109,8 +109,8 @@ def get_live_office_data():
         },
         {
             "id": "BUDI",
-            "name": "Budi (Macro & Berita)",
-            "role": "News & Macro Hunter",
+            "name": "Bastian (Macro Intel)",
+            "role": "Head of Macro & Sector Intel",
             "model": "Daily Standup Analyst",
             "color": "#0ea5e9",
             "hex": 0x0ea5e9,
@@ -124,8 +124,8 @@ def get_live_office_data():
         },
         {
             "id": "SARI",
-            "name": "Sari (Screener)",
-            "role": "Technical Screener",
+            "name": "Serena (Market Screener)",
+            "role": "VP of Algorithmic Screener",
             "model": "Daily Standup Screener",
             "color": "#14b8a6",
             "hex": 0x14b8a6,
@@ -139,8 +139,8 @@ def get_live_office_data():
         },
         {
             "id": "HENDRA",
-            "name": "Hendra (Risk Manager)",
-            "role": "Money Management Guard",
+            "name": "Damian (Chief Risk Officer)",
+            "role": "Chief Risk Officer & Capital Guard",
             "model": "Daily Standup Controller",
             "color": "#f97316",
             "hex": 0xf97316,
@@ -377,7 +377,7 @@ def render_live_office_html():
                 🎥 Semua Meja
             </button>
             <button onclick="setCameraView('judge')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
-                ⚖️ Hakim Arif
+                ⚖️ Chief Arthur
             </button>
             <button onclick="setCameraView('scalper')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
                 ⚡ Scalper & Quant
@@ -571,7 +571,7 @@ def render_live_office_html():
             cyanLight.position.set(-5, 6, 0);
             scene.add(cyanLight);
 
-            // Aksen Lampu Neon Ungu di Meja Hakim Arif
+            // Aksen Lampu Neon Ungu di Meja Chief Arthur
             const purpleLight = new THREE.PointLight(0xa855f7, 1.4, 20);
             purpleLight.position.set(0, 5, -4);
             scene.add(purpleLight);

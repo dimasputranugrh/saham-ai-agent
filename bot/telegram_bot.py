@@ -80,10 +80,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👔 *Selamat datang Bos di Meja Trading Karyawan AI Anda!*\n\n"
         f"{status_id}\n\n"
         "👥 *Tim Karyawan AI Anda:*\n"
-        "• 👨‍💻 *Budi* — Analis Teknikal & Intraday (VWAP, RSI, MACD, Volume)\n"
-        "• 👩‍💼 *Sari* — Analis Berita & Sentimen Pasar\n"
-        "• 🛡️ *Hendra* — Manajer Risiko (Area Beli, TP, Cut Loss, Jam Masuk)\n"
-        "• 🎯 *Arif* — Kepala Riset & Pemimpin DSU\n\n"
+        "• 👨‍💻 *Bastian* — Head of Macro & Sector Intel (Katalis Berita 7 Sektor & Komoditas)\n"
+        "• 👩‍💼 *Serena* — VP of Technical Screener (Breakout, VWAP, Volume Spike)\n"
+        "• 🛡️ *Damian* — Chief Risk Officer (Area Beli, TP1/TP2, Rem Darurat Cut Loss)\n"
+        "• 🎯 *Chief Arthur* — Supreme Decider & Pemimpin Sidang Konsensus 5 AI\n\n"
         "⌨️ *Perintah yang Tersedia:*\n"
         "• `/dashboard` — Link website monitoring & rekap harga saham (bisa dibuka di browser HP)\n"
         "• `/dsu` — Panggil rapat DSU pagi sekarang juga\n"
@@ -121,7 +121,7 @@ async def cmd_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_dsu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wait_msg = await update.message.reply_text(
-        "⏳ *Memanggil Budi, Sari, Hendra, dan Arif untuk rapat DSU...*\n_Sedang mengambil data market & berita terbaru..._",
+        "⏳ *Memanggil Bastian, Serena, Damian, dan Chief Arthur untuk rapat DSU...*\n_Sedang mengambil data market & berita terbaru..._",
         parse_mode=ParseMode.MARKDOWN,
     )
     report = await asyncio.to_thread(generate_morning_dsu_report)
@@ -199,7 +199,7 @@ async def cmd_beli(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🛒 *Cara Lapor Beli Saham:*\n"
             "Ketik: `/beli <KODE> <HARGA_BELI>`\n"
             "Contoh: `/beli BBCA 5250`\n\n"
-            "_Nanti Hendra & Arif akan otomatis menjaga saham ini dan memberi tahu Bos kapan harus JUAL!_",
+            "_Nanti Damian & Chief Arthur akan otomatis menjaga saham ini dan memberi tahu Bos kapan harus JUAL!_",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -230,7 +230,7 @@ async def cmd_beli(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     code = norm.replace(".JK", "")
     msg = (
-        f"✅ *Siap Bos! Saham {code} di harga Rp {buy_price:,.0f} sudah dicatat Hendra & Arif!*\n\n"
+        f"✅ *Siap Bos! Saham {code} di harga Rp {buy_price:,.0f} sudah dicatat Damian & Chief Arthur!*\n\n"
         f"🎯 *Rencana Jual Otomatis Anda:*\n"
         f"• 💰 *Target Jual Untung 1 (TP1):* Rp {tp1:,.0f} (+{((tp1-buy_price)/buy_price*100):.1f}%)\n"
         f"• 🚀 *Target Jual Untung 2 (TP2):* Rp {tp2:,.0f} (+{((tp2-buy_price)/buy_price*100):.1f}%)\n"

@@ -79,10 +79,10 @@ def _fmt_rp(val: float, is_idx: bool = True) -> str:
 def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
     """
     Menjalankan rapat pagi DSU (Daily Standup Update) dari 4 Karyawan AI:
-    1. Budi (Analis Teknikal & Kuantitatif)
-    2. Sari (Analis Berita & Sentimen Makro)
-    3. Hendra (Manajer Risiko & Eksekusi Jam Trading)
-    4. Arif (Kepala Riset / Lead Trader - Kesimpulan Saham Pilihan Hari Ini)
+    1. Bastian (Head of Macro & Sector Intel)
+    2. Serena (VP of Technical Screener)
+    3. Damian (Chief Risk Officer & Money Management)
+    4. Chief Arthur (Supreme Decider / Kesimpulan Saham Pilihan Hari Ini)
     """
     watchlist = tickers or config.load_watchlist()
     orchestrator = LearningLoopOrchestrator()
@@ -162,15 +162,15 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             "meskipun di belakang layar Anda memakai perhitungan matematika canggih (VWAP, RSI, MACD, ATR) dan Database Memori Historis, "
             "SAAT MELAPOR KE BOS GUNAKAN 'BAHASA BAYI' / BAHASA SEHARI-HARI YANG SUPER GAMPANG DIPAHAMI ANAK KECIL!\n\n"
             "Peran 4 Karyawan AI:\n"
-            "1. 👨‍💻 *Budi (Si Pemantau Grafik & Bandar)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan bukti pendukung, bukti penentang, serta hasil sidang 5 AI.\n"
-            "2. 👩‍💼 *Sari (Si Pemantau Berita & Peluang Lintas Sektor)*: Bandingkan BANYAK artikel dari `radar_perbandingan_berita_7_sektor_bei` (jangan cuma 1-2 artikel!). Jelaskan hukum sebab-akibat berita hari ini ke berbagai sektor (misal: kebijakan cukai rokok -> HMSP/GGRM/WIIM, suku bunga -> bank, harga emas/batu bara -> tambang, insentif -> properti/konsumer).\n"
-            "3. 🛡️ *Hendra (Si Penjaga Dompet Bos)*: Kasih panduan super jelas untuk:\n"
+            "1. 👨‍💻 *Bastian (Head of Macro & Berita Sektor)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan bukti pendukung, bukti penentang, serta hasil sidang 5 AI.\n"
+            "2. 👩‍💼 *Serena (VP of Screener & Volume Radar)*: Bandingkan BANYAK artikel dari `radar_perbandingan_berita_7_sektor_bei` (jangan cuma 1-2 artikel!). Jelaskan hukum sebab-akibat berita hari ini ke berbagai sektor (misal: kebijakan cukai rokok -> HMSP/GGRM/WIIM, suku bunga -> bank, harga emas/batu bara -> tambang, insentif -> properti/konsumer).\n"
+            "3. 🛡️ *Damian (Chief Risk Officer / Penjaga Modal)*: Kasih panduan super jelas untuk:\n"
             "   - ⚡ *Peluang Cepat (Scalping / Intraday Hari Ini)*\n"
             "   - 🌱 *Peluang Masa Depan (Swing / Tabungan Saham Mingguan-Bulanan dari Sektor yang Punya Katalis Bagus)*\n"
             "   - 🛒 *Beli di Harga Berapa:* (`entry_low` - `entry_high`)\n"
             "   - 💰 *Jual Ambil Untung (Cuan) di Harga Berapa:* (`take_profit_1` & `take_profit_2` beserta return bersih setelah fee)\n"
             "   - 🛑 *Rem Darurat / Pembatal Sinyal:* (`stop_loss` & `invalidation_conditions`)\n"
-            "4. 🎯 *Arif (Si Bos Analis / Kesimpulan)*: Kasih keputusan tegas (`BUY` atau `WAIT`) untuk jangka pendek (Scalping) dan jangka menengah/masa depan!\n\n"
+            "4. 🎯 *Chief Arthur (Supreme Decider / Kesimpulan)*: Kasih keputusan tegas (`BUY` atau `WAIT`) untuk jangka pendek (Scalping) dan jangka menengah/masa depan!\n\n"
             "ATURAN KERAS:\n"
             "- DILARANG MENGARANG ANGKA HARGA! Gunakan 100% angka Rupiah dari JSON.\n"
             "- Pisahkan fakta data nyata, interpretasi, dan asumsi biaya transaksi."
@@ -310,15 +310,15 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         "Jawab dengan 'BAHASA BAYI' (bahasa sehari-hari yang super simpel, pakai perumpamaan belanja/pasar), "
         "NAMUN tetap jujur memisahkan Fakta Data, Interpretasi, Asumsi Biaya, Bukti Pendukung vs Penentang, dan Pengalaman Memori Historis.\n"
         "Susunan Laporan:\n"
-        "1. 👨‍💻 *Budi (Pemantau Harga, Bukti Pendukung vs Penentang, & Memori)*: Jelaskan fakta harga sekarang, bukti yang mendukung naik, bukti yang menentang/risiko (seperti spread atau posisi di bawah rata-rata), dan pelajaran dari `memori_pembelajaran_historis`.\n"
-        "2. 👩‍💼 *Sari (Pemantau Gosip & Berita)*: Jelaskan berita terbaru saham ini dan cuaca IHSG dengan bahasa obrolan santai.\n"
-        "3. 🛡️ *Hendra (Penjaga Dompet Bos)*: Berikan contekan angka pasti dari JSON `data_teknikal_kuantitatif` (DILARANG MENGARANG ANGKA):\n"
+        "1. 👨‍💻 *Bastian (Pemantau Harga, Bukti Pendukung vs Penentang, & Memori)*: Jelaskan fakta harga sekarang, bukti yang mendukung naik, bukti yang menentang/risiko (seperti spread atau posisi di bawah rata-rata), dan pelajaran dari `memori_pembelajaran_historis`.\n"
+        "2. 👩‍💼 *Serena (Pemantau Gosip & Berita)*: Jelaskan berita terbaru saham ini dan cuaca IHSG dengan bahasa obrolan santai.\n"
+        "3. 🛡️ *Damian (Penjaga Dompet Bos)*: Berikan contekan angka pasti dari JSON `data_teknikal_kuantitatif` (DILARANG MENGARANG ANGKA):\n"
         "   - 💵 *Harga Sekarang:* `current_price` (Waktu data: `last_bar_time`)\n"
         "   - 🛒 *Harga Beli (Cicil/Serok):* `entry_low` sampai `entry_high`\n"
         "   - 💰 *Target Jual Untung (Ambil Cuan):* `take_profit_1` & `take_profit_2` (Estimasi untung bersih setelah potongan biaya transaksi: `estimated_net_return_pct`%)\n"
         "   - 🛑 *Rem Darurat & Pembatal Sinyal:* `stop_loss` (`invalidation_conditions`)\n"
         "   - 🎯 *Tingkat Keyakinan Terkalibrasi:* `calibrated_confidence` (`confidence_basis`)\n"
-        "4. 🎯 *Arif (Hakim Ketua / Kesimpulan Jam Beli & Jam Jual)*: Gunakan keputusan dari `hasil_sidang_5_ai` (**BUY** atau **WAIT**) beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
+        "4. 🎯 *Chief Arthur (Supreme Decider / Kesimpulan Jam Beli & Jam Jual)*: Gunakan keputusan dari `hasil_sidang_5_ai` (**BUY** atau **WAIT**) beserta **JAM BERAPA BELINYA** (`best_execution_window`) dan **KAPAN / JAM BERAPA HARUS JUALNYA** (`best_sell_window`)!"
     )
     ai_text = _generate_with_gemini(
         contents=f"Berikan laporan analisis untuk saham {code}:\n{json.dumps(payload, ensure_ascii=False)}",
@@ -466,7 +466,7 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
     if sell_alerts:
         lines.extend(["\n━━━━━━━━━━━━━━━━━━━━━━", sell_alerts])
 
-    lines.append("\n💡 _Ketik `/beli KODE HARGA` (contoh: `/beli BBCA 5250`) kalau Bos sudah beli, nanti Hendra & Arif yang pantau kapan harus jual!_")
+    lines.append("\n💡 _Ketik `/beli KODE HARGA` (contoh: `/beli BBCA 5250`) kalau Bos sudah beli, nanti Damian & Chief Arthur yang pantau kapan harus jual!_")
     return qualified, "\n".join(lines)
 
 
@@ -482,7 +482,7 @@ def evaluate_portfolio_sell_signals(force_all: bool = False) -> str:
                 "💼 *Dompet Saham Bos Masih Kosong*\n\n"
                 "Kalau Bos habis beli saham, lapor ke kami dengan ketik:\n"
                 "👉 `/beli KODE HARGA_BELI` (Contoh: `/beli BBCA 5250`)\n\n"
-                "Nanti setiap jam bursa, *Hendra & Arif* akan otomatis memantau harganya dan memberi tahu di Telegram kalau sudah waktunya **JUAL AMBIL UNTUNG** atau **REM DARURAT**!"
+                "Nanti setiap jam bursa, *Damian & Chief Arthur* akan otomatis memantau harganya dan memberi tahu di Telegram kalau sudah waktunya **JUAL AMBIL UNTUNG** atau **REM DARURAT**!"
             )
         return ""
 
@@ -530,7 +530,7 @@ def evaluate_portfolio_sell_signals(force_all: bool = False) -> str:
         lines.extend([
             f"\n📌 *{code}* (Modal Beli: {_fmt_rp(buy_price, snap.is_idx)} ➡️ Sekarang: *{_fmt_rp(cur, snap.is_idx)}* | *{pnl_pct:+.2f}%*)",
             f"   • Status: {status_jual}",
-            f"   • Panduan Arif: {saran}",
+            f"   • Panduan Chief Arthur: {saran}",
         ])
 
     if not force_all and urgent_count == 0:
@@ -569,7 +569,7 @@ def chat_with_ai_team(user_message: str) -> str:
             f"Data Kuantitatif Real-Time Saham Terkait:\n{json.dumps(mentioned_snapshots, ensure_ascii=False)}"
         ),
         system_instruction=(
-            "Anda adalah tim Karyawan AI Analis Saham pribadi (Budi, Sari, Hendra, Arif). "
+            "Anda adalah tim Karyawan AI Analis Saham pribadi (Bastian, Serena, Damian, Chief Arthur). "
             "Bos Anda masih pemula di saham dan minta dijelaskan pakai 'BAHASA BAYI' (bahasa sehari-hari yang super simpel, "
             "analogikan seperti belanja di pasar: harga diskon, lagi ramai pembeli, jual ambil untung, rem darurat biar nggak rugi dalam). "
             "Hindari istilah teknis yang membingungkan, tapi TETAP berikan angka harga Beli, harga Jual Untung, Rem Darurat, dan JAM BELI yang akurat sesuai data JSON!"
@@ -789,7 +789,7 @@ def generate_sectoral_news_catalyst_report() -> str:
         "analisis_harga_emiten_terdampak": sector_stock_picks,
     }
     sys_inst = (
-        "Anda adalah Tim Riset Lintas Sektor & Masa Depan (Sari, Budi, Hendra, Arif) untuk Bos yang pemula.\n"
+        "Anda adalah Tim Riset Lintas Sektor & Masa Depan (Serena, Bastian, Damian, Chief Arthur) untuk Bos yang pemula.\n"
         "Tugas Anda adalah membandingkan BANYAK berita lintas sektor dari JSON `perbandingan_berita_7_sektor` "
         "(seperti efek Cukai Rokok ke HMSP/GGRM/WIIM, Suku Bunga ke Bank, Harga Komoditas ke Tambang/Energi, Insentif ke Properti/Konsumer).\n"
         "Gunakan 'BAHASA BAYI' yang gampang dipahami, namun tajam membaca peluang:\n"
