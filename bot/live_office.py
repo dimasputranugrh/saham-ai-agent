@@ -24,13 +24,15 @@ def get_live_office_data():
             "model": "Ensemble Judge (>=3 Buy & >=60%)",
             "color": "#a855f7",
             "hex": 0xa855f7,
-            "pos": [0, 0, -3.5],  # Meja utama di depan ruang sidang
+            "pos": [0, 0, -3.8],
             "status": "DECIDING",
             "capacity": 85,
             "current_task": "Memimpin sidang konsensus 5 AI saham",
             "speech": "Sidang panel 5 AI dibuka. Semua rekomendasi wajib diuji % Works & konsensus.",
             "total_tasks": 0,
             "desk_type": "executive",
+            "hair_color": 0x334155,
+            "skin_tone": 0xfed7aa,
         },
         {
             "id": "AI_1",
@@ -46,6 +48,8 @@ def get_live_office_data():
             "speech": "Volume intraday spike terdeteksi! Mengecek kekuatan pembeli di atas VWAP.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x1e293b,
+            "skin_tone": 0xfde047,
         },
         {
             "id": "AI_5",
@@ -61,6 +65,8 @@ def get_live_office_data():
             "speech": "Probabilitas matematika dihitung murni dari rekaman memori historis.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x475569,
+            "skin_tone": 0xfed7aa,
         },
         {
             "id": "AI_2",
@@ -76,6 +82,8 @@ def get_live_office_data():
             "speech": "Waspada! Jangan buru-buru hajar kanan jika spread bid-offer terlalu tipis.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x0f172a,
+            "skin_tone": 0xfbcfe8,
         },
         {
             "id": "AI_4",
@@ -91,6 +99,8 @@ def get_live_office_data():
             "speech": "Tren harian selaras. Posisi support kuat dan Risk/Reward di atas 1:2.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x292524,
+            "skin_tone": 0xfed7aa,
         },
         {
             "id": "AI_3",
@@ -106,6 +116,8 @@ def get_live_office_data():
             "speech": "Terdeteksi akumulasi konsisten dari broker asing dan institusi.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x18181b,
+            "skin_tone": 0xfde047,
         },
         {
             "id": "BUDI",
@@ -121,6 +133,8 @@ def get_live_office_data():
             "speech": "Sentimen komoditas dan arah suku bunga BI sedang dikompilasi.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x334155,
+            "skin_tone": 0xfed7aa,
         },
         {
             "id": "SARI",
@@ -136,6 +150,8 @@ def get_live_office_data():
             "speech": "Daftar pantau saham aktif hari ini sudah siap di meja.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x451a03,
+            "skin_tone": 0xfbcfe8,
         },
         {
             "id": "HENDRA",
@@ -151,6 +167,8 @@ def get_live_office_data():
             "speech": "Semua posisi disiplin dalam batas toleransi drawdown 1.5%.",
             "total_tasks": 0,
             "desk_type": "standard",
+            "hair_color": 0x1e293b,
+            "skin_tone": 0xfed7aa,
         },
     ]
 
@@ -216,7 +234,6 @@ def get_live_office_data():
                     "final": r["final_decision"] or "PENDING",
                 })
 
-            # Analisis mutakhir
             cur.execute("""
                 SELECT ticker, direction, entry_price, take_profit_1, stop_loss, created_at_wib
                 FROM analysis_history
@@ -246,7 +263,7 @@ def get_live_office_data():
                     if last_analysis:
                         t_clean = (last_analysis["ticker"] or "").replace(".JK", "")
                         ag["current_task"] = f"Ketok Palu: {t_clean} -> {last_analysis['direction']}"
-                        ag["speech"] = f"Keputusan sidang {t_clean}: {last_analysis['direction']} (Rp {last_analysis['entry_price']:,.0f})".replace(",", ".")
+                        ag["speech"] = f"Vonis sidang {t_clean}: {last_analysis['direction']} (Rp {last_analysis['entry_price']:,.0f})".replace(",", ".")
                         ag["capacity"] = 85
                         ag["status"] = "DECIDING"
                 elif sid in ["BUDI", "SARI", "HENDRA"]:
@@ -278,9 +295,9 @@ def get_live_office_data():
 
 def render_live_office_html():
     """
-    Merender Ruang Kantor Virtual 3D Realtime Interaktif.
-    Bukan sekadar dashboard kartu biasa, melainkan simulasi ruang kantor 3D yang hidup:
-    karyawan duduk di kursi, tangan mengetik di keyboard, monitor menyala, ada yang jalan santai ke dispenser kopi.
+    Merender Ruang Kantor Virtual 3D Halus & Modern (Bukan Kotak-Kotak).
+    Menggunakan geometri halus kurva, karakter berpostur aerodinamis modern (stylized 3D avatars),
+    kursi putar ergonomis melengkung, dual monitor ultrawide curved, dan pencahayaan studio hangat.
     """
     initial_data = get_live_office_data()
     agents_json = json.dumps(initial_data["agents"])
@@ -290,7 +307,7 @@ def render_live_office_html():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Virtual Office 3D • Saham AI Agent (Live SaaS)</title>
+    <title>AI Virtual Office 3D • Saham AI Agent (Modern Curved 3D)</title>
     <!-- Three.js 3D Engine & OrbitControls -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -301,7 +318,7 @@ def render_live_office_html():
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: #030712;
+            background: #050814;
             color: #f8fafc;
             overflow: hidden;
             width: 100vw;
@@ -324,17 +341,18 @@ def render_live_office_html():
             position: absolute;
             transform: translate(-50%, -100%);
             pointer-events: none;
-            transition: opacity 0.2s ease;
+            transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 20;
             white-space: nowrap;
         }}
 
-        /* Custom Glassmorphism */
+        /* Modern Frosted Glass */
         .glass-panel {{
-            background: rgba(15, 23, 42, 0.75);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(51, 65, 85, 0.6);
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
         }}
     </style>
 </head>
@@ -346,64 +364,64 @@ def render_live_office_html():
     <!-- UI Overlay: Top Navigation Bar -->
     <header class="absolute top-3 left-3 right-3 sm:top-5 sm:left-6 sm:right-6 z-30 flex justify-between items-center pointer-events-none">
         <div class="glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-2xl pointer-events-auto">
-            <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg text-lg">
-                🏢
+            <div class="h-10 w-10 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/25 text-xl">
+                🏛️
             </div>
             <div>
                 <h1 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                    AI Virtual Office <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping"></span> 3D LIVE</span>
+                    AI Virtual Office <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold border border-emerald-500/40 flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping"></span> 3D STUDIO</span>
                 </h1>
-                <p class="text-[11px] text-slate-400 hidden sm:block">Simulasi Ruang Kantor 3D Karyawan AI Saham • Putar & Zoom Bebas</p>
+                <p class="text-[11px] text-slate-400 hidden sm:block">Karyawan AI 3D Halus & Modern • Putar 360° & Zoom Bebas</p>
             </div>
         </div>
 
         <!-- Action Controls -->
         <div class="flex items-center gap-2 pointer-events-auto">
-            <button onclick="toggleAudio()" id="btn-audio" class="glass-panel px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/80 transition flex items-center gap-1.5 shadow-lg">
+            <button onclick="toggleAudio()" id="btn-audio" class="glass-panel px-3.5 py-2 rounded-2xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/80 transition flex items-center gap-1.5">
                 🔇 <span class="hidden sm:inline">Suara Kantor</span>
             </button>
 
             <!-- Tombol Navigasi ke Web Rekap Saham Utama -->
-            <a href="/" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition">
+            <a href="/" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition">
                 📈 <span class="hidden sm:inline">Buka Rekap</span> Saham
             </a>
         </div>
     </header>
 
     <!-- UI Overlay: 3D Camera Angles Bar (Bottom Center) -->
-    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-wrap justify-center gap-1.5 sm:gap-2 px-3 max-w-full">
-        <div class="glass-panel p-1.5 rounded-2xl flex items-center gap-1 shadow-2xl pointer-events-auto overflow-x-auto max-w-[94vw]">
-            <button onclick="setCameraView('overview')" class="px-3 py-1.5 rounded-xl text-xs font-bold text-cyan-400 hover:bg-slate-800/90 transition flex items-center gap-1">
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-wrap justify-center gap-2 px-3 max-w-full">
+        <div class="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-2xl pointer-events-auto overflow-x-auto max-w-[94vw]">
+            <button onclick="setCameraView('overview')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold text-cyan-400 hover:bg-slate-800/90 transition flex items-center gap-1.5">
                 🎥 Semua Meja
             </button>
-            <button onclick="setCameraView('judge')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+            <button onclick="setCameraView('judge')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1.5">
                 ⚖️ Chief Arthur
             </button>
-            <button onclick="setCameraView('scalper')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+            <button onclick="setCameraView('scalper')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1.5">
                 ⚡ Scalper & Quant
             </button>
-            <button onclick="setCameraView('auditor')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
+            <button onclick="setCameraView('auditor')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1.5">
                 🛡️ Tim Risiko
             </button>
-            <button onclick="setCameraView('lounge')" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1">
-                ☕ Coffee Bar
+            <button onclick="setCameraView('lounge')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-1.5">
+                ☕ Coffee Lounge
             </button>
         </div>
     </div>
 
     <!-- UI Overlay: Left Stats Pill (Quick Office Capacity) -->
     <div class="absolute bottom-4 left-4 z-30 hidden md:block pointer-events-none">
-        <div class="glass-panel p-3.5 rounded-2xl space-y-1.5 shadow-2xl pointer-events-auto max-w-xs">
+        <div class="glass-panel p-4 rounded-3xl space-y-2 shadow-2xl pointer-events-auto max-w-xs">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                <span>Kapasitas Kantor AI</span>
-                <span class="text-cyan-400 font-mono" id="stat-load-text">{initial_data['office_metrics']['overall_load_pct']}%</span>
+                <span>Beban Kerja Kantor</span>
+                <span class="text-cyan-400 font-mono text-xs font-bold" id="stat-load-text">{initial_data['office_metrics']['overall_load_pct']}%</span>
             </div>
-            <div class="w-48 bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-700/50">
-                <div id="stat-load-bar" class="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full transition-all duration-700" style="width: {initial_data['office_metrics']['overall_load_pct']}%"></div>
+            <div class="w-48 bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-700/50">
+                <div id="stat-load-bar" class="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 h-full rounded-full transition-all duration-700" style="width: {initial_data['office_metrics']['overall_load_pct']}%"></div>
             </div>
-            <div class="text-[11px] text-slate-300 flex justify-between pt-0.5">
+            <div class="text-[11px] text-slate-300 flex justify-between pt-0.5 font-medium">
                 <span>🟢 <span id="stat-busy-text">{initial_data['office_metrics']['busy_agents']}</span> AI Bekerja</span>
-                <span class="text-slate-500">☕ <span id="stat-idle-text">{initial_data['office_metrics']['idle_agents']}</span> Standby</span>
+                <span class="text-slate-400">☕ <span id="stat-idle-text">{initial_data['office_metrics']['idle_agents']}</span> Standby</span>
             </div>
         </div>
     </div>
@@ -415,7 +433,7 @@ def render_live_office_html():
                 <!-- Header Drawer -->
                 <div class="flex justify-between items-start pb-4 border-b border-slate-800">
                     <div class="flex items-center gap-3">
-                        <div id="drawer-avatar" class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl shadow-inner border border-slate-700">
+                        <div id="drawer-avatar" class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 flex items-center justify-center text-2xl shadow-inner border border-slate-600">
                             🤖
                         </div>
                         <div>
@@ -430,7 +448,7 @@ def render_live_office_html():
 
                 <!-- Info Model & Status -->
                 <div class="my-4 space-y-3">
-                    <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                    <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                         <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Model Engine:</div>
                         <div id="drawer-model" class="text-xs font-mono text-slate-200">Google Gemini 3.6 Flash</div>
                     </div>
@@ -438,10 +456,10 @@ def render_live_office_html():
                     <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                         <div class="flex justify-between items-center mb-1.5">
                             <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status & Beban Kerja:</span>
-                            <span id="drawer-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold border">WORKING</span>
+                            <span id="drawer-status-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border">WORKING</span>
                         </div>
-                        <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 mt-2">
-                            <div id="drawer-cap-bar" class="bg-cyan-500 h-full rounded-full transition-all duration-500" style="width: 80%"></div>
+                        <div class="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800 mt-2">
+                            <div id="drawer-cap-bar" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all duration-500" style="width: 80%"></div>
                         </div>
                         <div class="text-[11px] text-right text-slate-400 font-mono mt-1"><span id="drawer-cap-num">80</span>% Kapasitas</div>
                     </div>
@@ -456,7 +474,7 @@ def render_live_office_html():
                         </p>
                     </div>
 
-                    <div class="p-3 rounded-2xl bg-slate-950/50 border border-slate-800 text-xs text-slate-400">
+                    <div class="p-3.5 rounded-2xl bg-slate-950/50 border border-slate-800 text-xs text-slate-400">
                         <span class="text-slate-500">Tugas Saat Ini:</span>
                         <div id="drawer-task" class="text-slate-200 font-medium mt-0.5">Audit order book</div>
                     </div>
@@ -465,10 +483,10 @@ def render_live_office_html():
 
             <!-- Tombol Interaksi -->
             <div class="pt-4 border-t border-slate-800 space-y-2">
-                <a href="https://t.me/Agent_d_saham_bot" target="_blank" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition">
+                <a href="https://t.me/Agent_d_saham_bot" target="_blank" class="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 transition">
                     💬 Beri Tugas via Telegram ↗
                 </a>
-                <button onclick="closeDrawer()" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+                <button onclick="closeDrawer()" class="w-full py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
                     Tutup Detail
                 </button>
             </div>
@@ -478,7 +496,7 @@ def render_live_office_html():
     <!-- Container Floating 2D Tags over 3D coordinates -->
     <div id="tags-container" class="pointer-events-none absolute inset-0 z-20 overflow-hidden"></div>
 
-    <!-- Script Utama Three.js 3D Virtual Office -->
+    <!-- Script Utama Three.js 3D Halus (Smooth Aesthetics) -->
     <script>
         const initialAgents = {agents_json};
         let scene, camera, renderer, controls;
@@ -488,7 +506,7 @@ def render_live_office_html():
         let raycaster, mouse;
         let selectedAgentId = null;
 
-        // Audio Ambience Kantor (Synthesized procedural keyboard typing clicks)
+        // Audio Ambience Kantor (Synthesized keyboard typing)
         let audioCtx = null;
         let isAudioPlaying = false;
         let audioInterval = null;
@@ -498,45 +516,46 @@ def render_live_office_html():
             const width = window.innerWidth;
             const height = window.innerHeight;
 
-            // 1. Scene
+            // 1. Scene dengan Fog Atmosferik
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x060913);
-            scene.fog = new THREE.FogExp2(0x060913, 0.025);
+            scene.background = new THREE.Color(0x070b18);
+            scene.fog = new THREE.FogExp2(0x070b18, 0.022);
 
-            // 2. Camera (Isometric Perspective)
-            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-            camera.position.set(16, 14, 18);
+            // 2. Camera
+            camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 1000);
+            camera.position.set(16, 13, 17);
 
-            // 3. Renderer
-            renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: false, powerPreference: "high-performance" }});
+            // 3. Renderer dengan Soft Shadow & High-Performance Tone Mapping
+            renderer = new THREE.WebGLRenderer({{ antialias: true, powerPreference: "high-performance" }});
             renderer.setSize(width, height);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.05;
             container.appendChild(renderer.domElement);
 
-            // 4. Orbit Controls (Bebas Rotasi & Zoom)
+            // 4. Orbit Controls (Smooth Damping)
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.maxPolarAngle = Math.PI / 2.15; // Mencegah tembus ke bawah lantai
-            controls.minDistance = 5;
-            controls.maxDistance = 45;
-            controls.target.set(0, 1.5, 0);
+            controls.dampingFactor = 0.06;
+            controls.maxPolarAngle = Math.PI / 2.15;
+            controls.minDistance = 4;
+            controls.maxDistance = 40;
+            controls.target.set(0, 1.4, 0);
 
-            // 5. Pencahayaan Kantor (Lighting)
-            setupLighting();
+            // 5. Studio Three-Point Lighting (Pencahayaan Studio Lembut, Bukan Kasar)
+            setupStudioLighting();
 
-            // 6. Arsitektur Ruangan Kantor (Lantai, Dinding Kaca Skyline, Plafon)
-            buildOfficeRoom();
+            // 6. Arsitektur Kantor Mewah (Lantai Parquet Reflektif, Dinding Kaca Skyline)
+            buildLuxuryOfficeRoom();
 
-            // 7. Meja Kerja & Karakter Karyawan AI 3D
-            buildWorkstationsAndCharacters(initialAgents);
+            // 7. Meja & Karakter Manusia 3D Halus (Stylized Smooth Avatars)
+            buildSmoothWorkstationsAndAvatars(initialAgents);
 
-            // 8. Karyawan yang Berjalan di Koridor Kantor (Animasi Dinamis)
-            buildWalkingOfficeEmployees();
+            // 8. Karyawan yang Berjalan Santai (Animasi Halus)
+            buildWalkingAvatars();
 
-            // Raycaster untuk Klik Meja di 3D
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
@@ -546,327 +565,434 @@ def render_live_office_html():
             animate();
         }}
 
-        function setupLighting() {{
-            // Ambient Light lembut
-            const ambient = new THREE.AmbientLight(0x38bdf8, 0.45);
+        function setupStudioLighting() {{
+            // Ambient Light Seimbang
+            const ambient = new THREE.AmbientLight(0xcfd8dc, 0.55);
             scene.add(ambient);
 
-            // Lampu Utama Kantor (Downlight hangat)
-            const mainLight = new THREE.DirectionalLight(0xffffff, 0.85);
-            mainLight.position.set(12, 20, 15);
-            mainLight.castShadow = true;
-            mainLight.shadow.mapSize.width = 2048;
-            mainLight.shadow.mapSize.height = 2048;
-            mainLight.shadow.camera.near = 0.5;
-            mainLight.shadow.camera.far = 60;
+            // Key Light Utama (Warm Soft Studio Sunlight)
+            const keyLight = new THREE.DirectionalLight(0xfff7ed, 0.95);
+            keyLight.position.set(14, 22, 16);
+            keyLight.castShadow = true;
+            keyLight.shadow.mapSize.width = 2048;
+            keyLight.shadow.mapSize.height = 2048;
+            keyLight.shadow.bias = -0.0005;
             const d = 16;
-            mainLight.shadow.camera.left = -d;
-            mainLight.shadow.camera.right = d;
-            mainLight.shadow.camera.top = d;
-            mainLight.shadow.camera.bottom = -d;
-            scene.add(mainLight);
+            keyLight.shadow.camera.left = -d;
+            keyLight.shadow.camera.right = d;
+            keyLight.shadow.camera.top = d;
+            keyLight.shadow.camera.bottom = -d;
+            scene.add(keyLight);
 
-            // Aksen Lampu Neon Cyan dari Langit-langit
-            const cyanLight = new THREE.PointLight(0x06b6d4, 1.2, 25);
-            cyanLight.position.set(-5, 6, 0);
-            scene.add(cyanLight);
+            // Fill Light Dingin dari Sisi Seberang
+            const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.4);
+            fillLight.position.set(-14, 12, -10);
+            scene.add(fillLight);
 
-            // Aksen Lampu Neon Ungu di Meja Chief Arthur
-            const purpleLight = new THREE.PointLight(0xa855f7, 1.4, 20);
-            purpleLight.position.set(0, 5, -4);
-            scene.add(purpleLight);
+            // Rim Light Ungu Elegan di Area Sidang Chief Arthur
+            const arthurRim = new THREE.PointLight(0xc084fc, 1.8, 22);
+            arthurRim.position.set(0, 5, -4);
+            scene.add(arthurRim);
+
+            // Rim Light Cyan di Meja Scalper & Quant
+            const scalperRim = new THREE.PointLight(0x22d3ee, 1.5, 20);
+            scalperRim.position.set(-5, 5, 0);
+            scene.add(scalperRim);
         }}
 
-        function buildOfficeRoom() {{
-            // Lantai Kantor Karpet Premium Dark Slate
-            const floorGeo = new THREE.PlaneGeometry(32, 26);
+        function buildLuxuryOfficeRoom() {{
+            // Lantai Kayu Glossy / Epoxy Mewah dengan Refleksi Cahaya Lembut
+            const floorGeo = new THREE.PlaneGeometry(34, 28);
             const floorMat = new THREE.MeshStandardMaterial({{
-                color: 0x0f172a,
-                roughness: 0.85,
-                metalness: 0.15
+                color: 0x0b1329,
+                roughness: 0.25,
+                metalness: 0.15,
             }});
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.rotation.x = -Math.PI / 2;
             floor.receiveShadow = true;
             scene.add(floor);
 
-            // Garis Grid Ubin Kantor Minimalis
-            const gridHelper = new THREE.GridHelper(32, 32, 0x1e293b, 0x1e293b);
-            gridHelper.position.y = 0.01;
-            scene.add(gridHelper);
+            // Karpet Area Tengah (Meeting Lounge Rug)
+            const rugGeo = new THREE.PlaneGeometry(16, 12);
+            const rugMat = new THREE.MeshStandardMaterial({{ color: 0x0f172a, roughness: 0.9 }});
+            const rug = new THREE.Mesh(rugGeo, rugMat);
+            rug.rotation.x = -Math.PI / 2;
+            rug.position.set(0, 0.015, 0.5);
+            rug.receiveShadow = true;
+            scene.add(rug);
 
-            // Dinding Kaca Belakang dengan Pemandangan Kota Malam (City Skyline)
-            const wallMat = new THREE.MeshStandardMaterial({{ color: 0x090d16, roughness: 0.5 }});
-
-            // Dinding Kiri
-            const leftWallGeo = new THREE.BoxGeometry(0.5, 9, 26);
-            const leftWall = new THREE.Mesh(leftWallGeo, wallMat);
-            leftWall.position.set(-16, 4.5, 0);
-            leftWall.receiveShadow = true;
-            scene.add(leftWall);
-
-            // Dinding Belakang (Kaca Panorama)
-            const backWallGeo = new THREE.BoxGeometry(32, 9, 0.5);
-            const backWall = new THREE.Mesh(backWallGeo, wallMat);
-            backWall.position.set(0, 4.5, -13);
+            // Dinding Belakang & Kiri Modern
+            const wallMat = new THREE.MeshStandardMaterial({{ color: 0x090d1a, roughness: 0.6 }});
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(34, 9, 0.5), wallMat);
+            backWall.position.set(0, 4.5, -14);
             backWall.receiveShadow = true;
             scene.add(backWall);
 
-            // Whiteboard Saham di Dinding Kiri
-            const wbGeo = new THREE.BoxGeometry(0.1, 4, 8);
-            const wbMat = new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.2 }});
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 28), wallMat);
+            leftWall.position.set(-17, 4.5, 0);
+            leftWall.receiveShadow = true;
+            scene.add(leftWall);
+
+            // Papan Tulis Strategi Saham Kaca Melengkung (Frosted Glass Whiteboard)
+            const wbGeo = new THREE.BoxGeometry(0.1, 4.2, 8.5);
+            const wbMat = new THREE.MeshStandardMaterial({{
+                color: 0xffffff,
+                roughness: 0.15,
+                metalness: 0.05
+            }});
             const wb = new THREE.Mesh(wbGeo, wbMat);
-            wb.position.set(-15.7, 4.5, -2);
+            wb.position.set(-16.7, 4.5, -2);
             scene.add(wb);
 
-            // Server Rack AI 24/7 di Sudut Kantor dengan Lampu Blinking
-            const rackGeo = new THREE.BoxGeometry(1.6, 6, 2.2);
-            const rackMat = new THREE.MeshStandardMaterial({{ color: 0x020617, metalness: 0.8, roughness: 0.2 }});
-            const rack = new THREE.Mesh(rackGeo, rackMat);
-            rack.position.set(-14.5, 3, -11);
+            // Server Rack AI Cluster dengan Lampu LED Halus
+            const rack = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 5.5, 24), new THREE.MeshStandardMaterial({{ color: 0x020617, metalness: 0.85, roughness: 0.2 }}));
+            rack.position.set(-15, 2.75, -11.5);
             rack.castShadow = true;
             scene.add(rack);
 
-            // LED Blinking Server
-            for (let i = 0; i < 6; i++) {{
-                const ledGeo = new THREE.SphereGeometry(0.06, 8, 8);
-                const ledMat = new THREE.MeshBasicMaterial({{ color: i % 2 === 0 ? 0x10b981 : 0x06b6d4 }});
-                const led = new THREE.Mesh(ledGeo, ledMat);
-                led.position.set(-13.65, 1.5 + (i * 0.7), -11.5 + (i % 3 * 0.4));
-                scene.add(led);
+            // Cincin Neon Server AI
+            for (let i = 0; i < 4; i++) {{
+                const ring = new THREE.Mesh(new THREE.TorusGeometry(0.92, 0.03, 16, 32), new THREE.MeshBasicMaterial({{ color: i % 2 === 0 ? 0x10b981 : 0x06b6d4 }}));
+                ring.rotation.x = Math.PI / 2;
+                ring.position.set(-15, 1.2 + (i * 1.1), -11.5);
+                scene.add(ring);
             }}
 
-            // Coffee & Water Dispenser Lounge Corner
-            buildLoungeArea();
+            // Lounge Bar Kopi Modern & Tanaman Hias Kurva
+            buildOrganicLounge();
         }}
 
-        function buildLoungeArea() {{
-            // Meja Bar Kopi & Dispenser Air Galon
-            const barGeo = new THREE.BoxGeometry(3, 1.8, 6);
-            const barMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.6 }});
-            const bar = new THREE.Mesh(barGeo, barMat);
-            bar.position.set(13.8, 0.9, -9);
+        function buildOrganicLounge() {{
+            // Meja Bar Kopi Melengkung
+            const bar = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 1.8, 32, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.4 }}));
+            bar.rotation.y = Math.PI / 2;
+            bar.position.set(14.5, 0.9, -9);
             bar.castShadow = true;
             bar.receiveShadow = true;
             scene.add(bar);
 
-            // Dispenser Galon Air Biru
-            const dispBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), new THREE.MeshStandardMaterial({{ color: 0xf8fafc }}));
-            dispBody.position.set(13.8, 2.6, -11);
-            scene.add(dispBody);
+            // Dispenser Galon Air Melengkung Halus
+            const dispStand = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.6, 24), new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.3 }}));
+            dispStand.position.set(14.8, 2.6, -11.5);
+            scene.add(dispStand);
 
-            const waterBottle = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.9, 16), new THREE.MeshStandardMaterial({{ color: 0x0284c7, transparent: true, opacity: 0.7 }}));
-            waterBottle.position.set(13.8, 3.8, -11);
+            const waterBottle = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.3, 0.85, 24), new THREE.MeshStandardMaterial({{ color: 0x0284c7, transparent: true, opacity: 0.65, roughness: 0.1 }}));
+            waterBottle.position.set(14.8, 3.8, -11.5);
             scene.add(waterBottle);
 
-            // Sofa Santai Karyawan
-            const sofaGeo = new THREE.BoxGeometry(2.5, 1.2, 5);
-            const sofaMat = new THREE.MeshStandardMaterial({{ color: 0x334155, roughness: 0.8 }});
-            const sofa = new THREE.Mesh(sofaGeo, sofaMat);
+            // Sofa Santai Lengkung (Curved Modern Sofa)
+            const sofa = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 1.2, 32, 1, false, Math.PI * 0.2, Math.PI * 0.6), new THREE.MeshStandardMaterial({{ color: 0x334155, roughness: 0.8 }}));
             sofa.position.set(13.8, 0.6, -3);
             sofa.castShadow = true;
             scene.add(sofa);
 
-            // Pot Tanaman Hias Hijau (Office Plant)
-            const potMat = new THREE.MeshStandardMaterial({{ color: 0x475569 }});
-            const plantMat = new THREE.MeshStandardMaterial({{ color: 0x15803d, roughness: 0.9 }});
-            const pot1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.35, 1, 16), potMat);
-            pot1.position.set(14, 0.5, 10);
-            scene.add(pot1);
-            const leaves1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8), plantMat);
-            leaves1.position.set(14, 1.4, 10);
-            scene.add(leaves1);
+            // Tanaman Kantor Tropis Berdaun Daun Bulat Halus (Bukan Dodecahedron)
+            buildOrganicPlant(14.5, 0, 9);
+            buildOrganicPlant(-14.5, 0, 11);
         }}
 
-        function buildWorkstationsAndCharacters(agentsList) {{
+        function buildOrganicPlant(x, y, z) {{
+            const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.4, 1.1, 24), new THREE.MeshStandardMaterial({{ color: 0x475569, roughness: 0.5 }}));
+            pot.position.set(x, y + 0.55, z);
+            pot.castShadow = true;
+            scene.add(pot);
+
+            // Batang tanaman
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.4, 12), new THREE.MeshStandardMaterial({{ color: 0x27272a }}));
+            stem.position.set(x, y + 1.6, z);
+            scene.add(stem);
+
+            // Daun-daun tropis oval melengkung
+            const leafMat = new THREE.MeshStandardMaterial({{ color: 0x16a34a, roughness: 0.7 }});
+            for (let i = 0; i < 7; i++) {{
+                const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16), leafMat);
+                leaf.scale.set(1.4, 0.15, 0.8);
+                leaf.position.set(x + Math.sin(i * 1.2) * 0.45, y + 1.5 + (i * 0.2), z + Math.cos(i * 1.2) * 0.45);
+                leaf.rotation.set(Math.sin(i) * 0.4, i * 0.9, Math.cos(i) * 0.4);
+                leaf.castShadow = true;
+                scene.add(leaf);
+            }}
+        }}
+
+        function buildSmoothWorkstationsAndAvatars(agentsList) {{
             agentsList.forEach(ag => {{
                 const isJudge = ag.id === 'ARIF';
                 const pos = ag.pos;
 
-                // Group untuk seluruh unit workstation
-                const deskGroup = new THREE.Group();
-                deskGroup.position.set(pos[0], pos[1], pos[2]);
+                const workstation = new THREE.Group();
+                workstation.position.set(pos[0], pos[1], pos[2]);
 
-                // 1. Meja Kayu (Desk Slab)
-                const deskWidth = isJudge ? 3.6 : 2.5;
-                const deskDepth = isJudge ? 1.8 : 1.4;
+                // 1. MEJA KERJA MODERN SUDUT MELENGKUNG (OVAL BEVELED SLAB)
+                const deskLength = isJudge ? 3.6 : 2.6;
+                const deskDepth = isJudge ? 1.7 : 1.35;
                 const deskTopMat = new THREE.MeshStandardMaterial({{
-                    color: isJudge ? 0x451a03 : 0x1e293b,
-                    roughness: 0.4,
+                    color: isJudge ? 0x271708 : 0x1e293b,
+                    roughness: 0.35,
                     metalness: 0.1
                 }});
-                const deskTop = new THREE.Mesh(new THREE.BoxGeometry(deskWidth, 0.12, deskDepth), deskTopMat);
+
+                // Meja dengan Cylinder Pipih & Ujung Membulat (Tidak Tajam Kotak)
+                const deskTop = new THREE.Mesh(new THREE.CylinderGeometry(deskLength / 2, deskLength / 2, 0.12, 32), deskTopMat);
+                deskTop.scale.set(1, 1, deskDepth / deskLength);
                 deskTop.position.set(0, 1.3, 0);
                 deskTop.castShadow = true;
                 deskTop.receiveShadow = true;
-                deskGroup.add(deskTop);
+                workstation.add(deskTop);
 
-                // Kaki Meja Besi
-                const legMat = new THREE.MeshStandardMaterial({{ color: 0x0f172a, metalness: 0.8 }});
-                const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, deskDepth * 0.9), legMat);
-                leg1.position.set(-deskWidth / 2 + 0.15, 0.65, 0);
-                deskGroup.add(leg1);
+                // Kaki Meja Silinder Chrome Halus
+                const chromeLegMat = new THREE.MeshStandardMaterial({{ color: 0x64748b, metalness: 0.9, roughness: 0.15 }});
+                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.3, 16), chromeLegMat);
+                leg1.position.set(-deskLength * 0.38, 0.65, -deskDepth * 0.28);
+                leg1.castShadow = true;
+                workstation.add(leg1);
+
                 const leg2 = leg1.clone();
-                leg2.position.set(deskWidth / 2 - 0.15, 0.65, 0);
-                deskGroup.add(leg2);
+                leg2.position.set(deskLength * 0.38, 0.65, -deskDepth * 0.28);
+                workstation.add(leg2);
 
-                // 2. Dual Monitor Komputer di Meja
+                const leg3 = leg1.clone();
+                leg3.position.set(-deskLength * 0.38, 0.65, deskDepth * 0.28);
+                workstation.add(leg3);
+
+                const leg4 = leg1.clone();
+                leg4.position.set(deskLength * 0.38, 0.65, deskDepth * 0.28);
+                workstation.add(leg4);
+
+                // 2. MONITOR ULTRA-WIDE CURVED GAMING/QUANT SCREEN (LENGKUNG MODERN)
                 const monitorGroup = new THREE.Group();
-                monitorGroup.position.set(0, 1.36, -0.25);
+                monitorGroup.position.set(0, 1.36, -0.2);
 
-                // Monitor Utama (Layar Chart)
-                const monFrame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.75, 0.06), new THREE.MeshStandardMaterial({{ color: 0x020617 }}));
-                monFrame.position.set(0, 0.55, 0);
-                monFrame.castShadow = true;
-                monitorGroup.add(monFrame);
+                // Layar Melengkung menggunakan Cylinder Segment Halus
+                const screenRadius = 2.4;
+                const screenArc = Math.PI * 0.32;
+                const screenGeo = new THREE.CylinderGeometry(screenRadius, screenRadius, 0.78, 36, 1, true, -screenArc / 2, screenArc);
+                const screenMat = new THREE.MeshBasicMaterial({{
+                    color: ag.status === 'WORKING' ? 0x34d399 : (ag.status === 'DECIDING' ? 0xc084fc : 0x38bdf8),
+                    side: THREE.DoubleSide
+                }});
+                const curvedScreen = new THREE.Mesh(screenGeo, screenMat);
+                curvedScreen.position.set(0, 0.55, screenRadius - 0.2);
+                monitorGroup.add(curvedScreen);
 
-                // Layar Menyala Candlestick
-                const screenMat = new THREE.MeshBasicMaterial({{ color: ag.status === 'WORKING' ? 0x10b981 : 0x0284c7 }});
-                const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.12, 0.68), screenMat);
-                screen.position.set(0, 0.55, 0.035);
-                monitorGroup.add(screen);
+                // Backing Bezel Tipis Melengkung
+                const bezelMat = new THREE.MeshStandardMaterial({{ color: 0x020617, metalness: 0.8, roughness: 0.2, side: THREE.DoubleSide }});
+                const curvedBezel = new THREE.Mesh(
+                    new THREE.CylinderGeometry(screenRadius + 0.02, screenRadius + 0.02, 0.82, 36, 1, true, -screenArc / 2, screenArc),
+                    bezelMat
+                );
+                curvedBezel.position.copy(curvedScreen.position);
+                curvedBezel.castShadow = true;
+                monitorGroup.add(curvedBezel);
 
-                // Monitor Kedua (Vertikal / Terminal Kode)
-                const monSideFrame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.9, 0.06), new THREE.MeshStandardMaterial({{ color: 0x020617 }}));
-                monSideFrame.position.set(0.95, 0.6, 0.15);
-                monSideFrame.rotation.y = -0.35;
-                monitorGroup.add(monSideFrame);
+                // Stand Monitor Ergonomis Melengkung
+                const standBase = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.03, 24), chromeLegMat);
+                standBase.position.set(0, 0.02, 0);
+                monitorGroup.add(standBase);
 
-                const screenSide = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.82), new THREE.MeshBasicMaterial({{ color: 0x06b6d4 }}));
-                screenSide.position.set(0.95, 0.6, 0.185);
-                screenSide.rotation.y = -0.35;
-                monitorGroup.add(screenSide);
+                const standPole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.5, 16), chromeLegMat);
+                standPole.position.set(0, 0.26, 0);
+                standPole.rotation.x = 0.15;
+                monitorGroup.add(standPole);
 
-                // Tiang Monitor
-                const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.4), legMat);
-                stand.position.set(0, 0.2, 0);
-                monitorGroup.add(stand);
-                deskGroup.add(monitorGroup);
+                workstation.add(monitorGroup);
 
-                // Keyboard RGB & Mouse
-                const kb = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.03, 0.3), new THREE.MeshStandardMaterial({{ color: 0x0f172a }}));
-                kb.position.set(0, 1.38, 0.25);
-                deskGroup.add(kb);
+                // Keyboard Chiclet Slim & Mouse Halus
+                const kb = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.02, 24), new THREE.MeshStandardMaterial({{ color: 0x0f172a, roughness: 0.4 }}));
+                kb.scale.set(1.4, 1, 0.55);
+                kb.position.set(0, 1.38, 0.28);
+                workstation.add(kb);
 
-                const mouseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.18), new THREE.MeshStandardMaterial({{ color: 0x334155 }}));
-                mouseMesh.position.set(0.55, 1.38, 0.25);
-                deskGroup.add(mouseMesh);
+                const mouseMesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), new THREE.MeshStandardMaterial({{ color: 0x334155 }}));
+                mouseMesh.scale.set(0.8, 0.4, 1.2);
+                mouseMesh.position.set(0.65, 1.38, 0.28);
+                workstation.add(mouseMesh);
 
-                // Cangkir Kopi Karyawan
-                const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.15, 12), new THREE.MeshStandardMaterial({{ color: 0xf8fafc }}));
-                mug.position.set(-0.7, 1.44, 0.25);
-                deskGroup.add(mug);
+                // Cangkir Kopi Keramik Halus
+                const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.065, 0.16, 20), new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.2 }}));
+                mug.position.set(-0.75, 1.44, 0.28);
+                workstation.add(mug);
 
                 if (isJudge) {{
-                    // Palu Hakim Kayu di Meja
-                    const gavel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.12), new THREE.MeshStandardMaterial({{ color: 0xb45309 }}));
-                    gavel.position.set(0.8, 1.42, 0.4);
-                    deskGroup.add(gavel);
+                    // Palu Sidang Kayu Ukir (Gavel)
+                    const gavelHead = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.32, 16), new THREE.MeshStandardMaterial({{ color: 0xb45309, roughness: 0.3 }}));
+                    gavelHead.rotation.z = Math.PI / 2;
+                    gavelHead.position.set(0.85, 1.42, 0.4);
+                    workstation.add(gavelHead);
                 }}
 
-                // 3. Kursi Kantor Ergonomis (Swivel Chair)
-                const chairMat = new THREE.MeshStandardMaterial({{ color: isJudge ? 0x1e1b4b : 0x1e293b, roughness: 0.7 }});
-                const seat = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.8), chairMat);
-                seat.position.set(0, 0.9, 0.85);
-                deskGroup.add(seat);
+                // 3. KURSI KANTOR ERGONOMIS PUTAR (CURVED SWIVEL CHAIR)
+                const chairMat = new THREE.MeshStandardMaterial({{ color: isJudge ? 0x2e1065 : 0x1e293b, roughness: 0.6 }});
 
-                const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.1, 0.12), chairMat);
-                backrest.position.set(0, 1.5, 1.25);
-                deskGroup.add(backrest);
+                // Dudukan Kursi Membulat Lembut
+                const seatCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.44, 0.14, 24), chairMat);
+                seatCushion.position.set(0, 0.88, 0.85);
+                workstation.add(seatCushion);
 
-                // 4. Karakter Karyawan AI 3D (Wujud Orang Duduk & Mengetik)
-                const charGroup = new THREE.Group();
-                charGroup.position.set(0, 0.9, 0.8);
+                // Sandaran Punggung Melengkung Halus
+                const backCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24, 1, false, 0, Math.PI), chairMat);
+                backCushion.rotation.y = Math.PI / 2;
+                backCushion.position.set(0, 1.42, 1.15);
+                workstation.add(backCushion);
 
-                // Badan / Kemeja Karyawan
-                const shirtMat = new THREE.MeshStandardMaterial({{ color: ag.hex, roughness: 0.6 }});
-                const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.4), shirtMat);
-                torso.position.set(0, 0.45, 0);
+                // Tiang Hidrolik Kursi Bintang 5
+                const hydPost = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.8, 16), chromeLegMat);
+                hydPost.position.set(0, 0.4, 0.85);
+                workstation.add(hydPost);
+
+                // 4. KARAKTER KARYAWAN 3D HALUS & BERKELAS (BUKAN KOTAK)
+                const avatarGroup = new THREE.Group();
+                avatarGroup.position.set(0, 0.88, 0.82);
+
+                // Badan / Torso Silinder Tapered (Lebar di Bahu, Ramping di Pinggang)
+                const bodyMat = new THREE.MeshStandardMaterial({{ color: ag.hex, roughness: 0.55, metalness: 0.05 }});
+                const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.24, 0.76, 24), bodyMat);
+                torso.position.set(0, 0.46, 0);
                 torso.castShadow = true;
-                charGroup.add(torso);
+                avatarGroup.add(torso);
 
-                // Kepala & Wajah
-                const skinMat = new THREE.MeshStandardMaterial({{ color: 0xfed7aa, roughness: 0.8 }});
-                const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), skinMat);
-                head.position.set(0, 1.05, 0.02);
+                // Bahu Membulat (Shoulder Spheres)
+                const shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), bodyMat);
+                shoulderL.position.set(-0.32, 0.74, 0);
+                avatarGroup.add(shoulderL);
+
+                const shoulderR = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), bodyMat);
+                shoulderR.position.set(0.32, 0.74, 0);
+                avatarGroup.add(shoulderR);
+
+                // Leher Silinder Halus
+                const skinMat = new THREE.MeshStandardMaterial({{ color: ag.skin_tone || 0xfed7aa, roughness: 0.85 }});
+                const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.18, 20), skinMat);
+                neck.position.set(0, 0.86, 0.02);
+                avatarGroup.add(neck);
+
+                // Kepala Avatar Bulat Halus (Stylized Modern Head)
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 28, 28), skinMat);
+                head.position.set(0, 1.08, 0.04);
                 head.castShadow = true;
-                charGroup.add(head);
+                avatarGroup.add(head);
 
-                // Rambut Karyawan
-                const hairMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.9 }});
-                const hair = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
-                hair.position.set(0, 1.12, 0.02);
-                charGroup.add(hair);
+                // Rambut Stylist Mengikuti Bentuk Kepala
+                const hairMat = new THREE.MeshStandardMaterial({{ color: ag.hair_color || 0x1e293b, roughness: 0.9 }});
+                const hair = new THREE.Mesh(new THREE.SphereGeometry(0.28, 28, 28, 0, Math.PI * 2, 0, Math.PI * 0.65), hairMat);
+                hair.position.set(0, 1.13, 0.03);
+                avatarGroup.add(hair);
 
-                // Lengan Kiri & Kanan (Animated Typing)
-                const armMat = shirtMat;
-                const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), armMat);
-                armL.position.set(-0.38, 0.35, -0.15);
+                // Mata Stylist 3D Berkilau
+                const eyeMat = new THREE.MeshBasicMaterial({{ color: 0x0f172a }});
+                const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), eyeMat);
+                eyeL.position.set(-0.08, 1.08, 0.28);
+                avatarGroup.add(eyeL);
+
+                const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), eyeMat);
+                eyeR.position.set(0.08, 1.08, 0.28);
+                avatarGroup.add(eyeR);
+
+                // Aksesori Khusus (Headset RGB untuk Scalper / Kacamata untuk Auditor)
+                if (ag.id === 'AI_1') {{
+                    const band = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.03, 16, 32, Math.PI), new THREE.MeshStandardMaterial({{ color: 0x06b6d4, roughness: 0.2 }}));
+                    band.rotation.z = Math.PI;
+                    band.position.set(0, 1.18, 0.04);
+                    avatarGroup.add(band);
+
+                    const earcupL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 16), new THREE.MeshStandardMaterial({{ color: 0x0891b2 }}));
+                    earcupL.rotation.z = Math.PI / 2;
+                    earcupL.position.set(-0.28, 1.08, 0.04);
+                    avatarGroup.add(earcupL);
+
+                    const earcupR = earcupL.clone();
+                    earcupR.position.set(0.28, 1.08, 0.04);
+                    avatarGroup.add(earcupR);
+                }}
+
+                // Lengan Halus Sendi Silinder & Telapak Tangan (Animated Typing)
+                const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.45, 16), bodyMat);
+                armL.position.set(-0.34, 0.46, -0.15);
                 armL.rotation.x = -Math.PI / 3;
-                charGroup.add(armL);
+                avatarGroup.add(armL);
 
-                const armR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), armMat);
-                armR.position.set(0.38, 0.35, -0.15);
+                const handL = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), skinMat);
+                handL.position.set(-0.34, 0.28, -0.32);
+                avatarGroup.add(handL);
+
+                const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.45, 16), bodyMat);
+                armR.position.set(0.34, 0.46, -0.15);
                 armR.rotation.x = -Math.PI / 3;
-                charGroup.add(armR);
+                avatarGroup.add(armR);
 
-                deskGroup.add(charGroup);
+                const handR = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), skinMat);
+                handR.position.set(0.34, 0.28, -0.32);
+                avatarGroup.add(handR);
 
-                // Metadata untuk interaksi klik
-                deskGroup.userData = {{
+                workstation.add(avatarGroup);
+
+                // Metadata untuk Interaksi & Animasi
+                workstation.userData = {{
                     agentId: ag.id,
                     agentData: ag,
                     armL: armL,
+                    handL: handL,
                     armR: armR,
+                    handR: handR,
                     head: head,
-                    charGroup: charGroup,
-                    screen: screen
+                    avatarGroup: avatarGroup,
+                    curvedScreen: curvedScreen
                 }};
 
-                deskMeshes.push(deskTop); // Target click raycaster
-                deskTop.userData = deskGroup.userData;
+                deskMeshes.push(deskTop);
+                deskTop.userData = workstation.userData;
 
-                characterGroups.push(deskGroup.userData);
-                scene.add(deskGroup);
+                characterGroups.push(workstation.userData);
+                scene.add(workstation);
 
-                // Buat 2D Floating Name Tag di atas meja
                 createFloatingTag(ag);
             }});
         }}
 
-        function buildWalkingOfficeEmployees() {{
-            // Tambahkan 2 karakter karyawan yang berjalan santai di koridor kantor agar suasana ramai dan sibuk
-            const walker1 = createWalkingHuman(0x38bdf8, [-8, 0, 8], [8, 0, 8]);
+        function buildWalkingAvatars() {{
+            // Karakter Manusia 3D Halus yang Berjalan di Koridor
+            const walker1 = createSmoothWalker(0x0284c7, 0xfed7aa, [-7, 0, 7.5], [7, 0, 7.5]);
             scene.add(walker1.group);
             walkingHumans.push(walker1);
 
-            const walker2 = createWalkingHuman(0xf43f5e, [13.5, 0, -2], [13.5, 0, -8]);
+            const walker2 = createSmoothWalker(0xf43f5e, 0xfbcfe8, [14, 0, -2], [14, 0, -8]);
             scene.add(walker2.group);
             walkingHumans.push(walker2);
         }}
 
-        function createWalkingHuman(shirtColor, startPos, endPos) {{
+        function createSmoothWalker(shirtColor, skinTone, startPos, endPos) {{
             const group = new THREE.Group();
             group.position.set(startPos[0], startPos[1], startPos[2]);
 
-            const bodyMat = new THREE.MeshStandardMaterial({{ color: shirtColor }});
-            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), bodyMat);
+            // Badan Tapered Halus
+            const bodyMat = new THREE.MeshStandardMaterial({{ color: shirtColor, roughness: 0.6 }});
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.22, 0.75, 20), bodyMat);
             torso.position.y = 1.35;
             torso.castShadow = true;
             group.add(torso);
 
-            const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshStandardMaterial({{ color: 0xfed7aa }}));
+            // Kepala Bulat Halus
+            const skinMat = new THREE.MeshStandardMaterial({{ color: skinTone, roughness: 0.85 }});
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 24, 24), skinMat);
             head.position.y = 1.9;
+            head.castShadow = true;
             group.add(head);
 
-            // Kaki
+            // Rambut
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 24, 0, Math.PI * 2, 0, Math.PI * 0.6), new THREE.MeshStandardMaterial({{ color: 0x1e293b }}));
+            hair.position.y = 1.95;
+            group.add(hair);
+
+            // Kaki Silinder Halus
             const legMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b }});
-            const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.8, 0.16), legMat);
-            legL.position.set(-0.16, 0.5, 0);
+            const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.85, 16), legMat);
+            legL.position.set(-0.14, 0.45, 0);
+            legL.castShadow = true;
             group.add(legL);
 
-            const legR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.8, 0.16), legMat);
-            legR.position.set(0.16, 0.5, 0);
+            const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.85, 16), legMat);
+            legR.position.set(0.14, 0.45, 0);
+            legR.castShadow = true;
             group.add(legR);
 
             return {{
@@ -874,7 +1000,7 @@ def render_live_office_html():
                 start: startPos,
                 end: endPos,
                 progress: 0,
-                speed: 0.0035 + Math.random() * 0.002,
+                speed: 0.0035 + Math.random() * 0.0015,
                 legL: legL,
                 legR: legR
             }};
@@ -890,13 +1016,13 @@ def render_live_office_html():
             const dotClass = isBusy ? 'bg-emerald-400 animate-ping' : 'bg-slate-400';
 
             tag.innerHTML = `
-                <div class="px-2.5 py-1 rounded-xl glass-panel border shadow-lg flex items-center gap-1.5 cursor-pointer pointer-events-auto transform hover:scale-105 transition" onclick="openDrawerById('${{ag.id}}')">
-                    <span class="relative flex h-2 w-2">
+                <div class="px-3 py-1.5 rounded-2xl glass-panel border shadow-xl flex items-center gap-2 cursor-pointer pointer-events-auto transform hover:scale-105 transition" onclick="openDrawerById('${{ag.id}}')">
+                    <span class="relative flex h-2.5 w-2.5">
                         <span class="${{dotClass}} absolute inline-flex h-full w-full rounded-full opacity-75"></span>
-                        <span class="${{dotClass}} relative inline-flex rounded-full h-2 w-2"></span>
+                        <span class="${{dotClass}} relative inline-flex rounded-full h-2.5 w-2.5"></span>
                     </span>
-                    <span class="text-[11px] font-bold text-white">${{ag.name.split(' ')[0]}}</span>
-                    <span class="text-[9px] px-1.5 py-0.2 rounded-full border font-mono ${{statusClass}}">${{ag.status}}</span>
+                    <span class="text-xs font-bold text-white">${{ag.name.split(' ')[0]}}</span>
+                    <span class="text-[9px] px-2 py-0.5 rounded-full border font-mono font-bold ${{statusClass}}">${{ag.status}}</span>
                 </div>
             `;
             document.getElementById('tags-container').appendChild(tag);
@@ -907,10 +1033,9 @@ def render_live_office_html():
                 const tag = document.getElementById(`tag-${{ag.id}}`);
                 if (!tag) return;
 
-                const worldPos = new THREE.Vector3(ag.pos[0], ag.pos[1] + 2.7, ag.pos[2]);
+                const worldPos = new THREE.Vector3(ag.pos[0], ag.pos[1] + 2.75, ag.pos[2]);
                 worldPos.project(camera);
 
-                // Jika di belakang kamera, sembunyikan
                 if (worldPos.z > 1) {{
                     tag.style.display = 'none';
                     return;
@@ -931,7 +1056,6 @@ def render_live_office_html():
         }}
 
         function onCanvasClick(event) {{
-            // Jangan trigger jika klik tombol UI
             if (event.target.closest('button') || event.target.closest('a') || event.target.closest('#agent-drawer')) return;
 
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -964,14 +1088,13 @@ def render_live_office_html():
             const badge = document.getElementById('drawer-status-badge');
             badge.innerText = ag.status;
             badge.className = ag.status === 'WORKING' || ag.status === 'DECIDING'
-                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                : 'px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700';
+                ? 'px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                : 'px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700';
 
             document.getElementById('agent-drawer').classList.remove('translate-x-full');
 
-            // Gerakkan kamera fokus ke meja karyawan
             const targetPos = ag.pos;
-            gsapCameraTo(targetPos[0] + 5, targetPos[1] + 4, targetPos[2] + 6, targetPos[0], targetPos[1] + 1.2, targetPos[2]);
+            gsapCameraTo(targetPos[0] + 4.5, targetPos[1] + 3.8, targetPos[2] + 5.5, targetPos[0], targetPos[1] + 1.3, targetPos[2]);
         }}
 
         function closeDrawer() {{
@@ -982,20 +1105,19 @@ def render_live_office_html():
         function setCameraView(viewName) {{
             closeDrawer();
             if (viewName === 'overview') {{
-                gsapCameraTo(16, 14, 18, 0, 1.5, 0);
+                gsapCameraTo(16, 13, 17, 0, 1.4, 0);
             }} else if (viewName === 'judge') {{
-                gsapCameraTo(0, 5, 2, 0, 1.5, -3.5);
+                gsapCameraTo(0, 4.5, 1.8, 0, 1.4, -3.8);
             }} else if (viewName === 'scalper') {{
-                gsapCameraTo(-9, 5, 4, -4.5, 1.3, 0.5);
+                gsapCameraTo(-8.5, 4.5, 3.5, -4.5, 1.3, 0.5);
             }} else if (viewName === 'auditor') {{
-                gsapCameraTo(9, 5, 4, 4.5, 1.3, 0.5);
+                gsapCameraTo(8.5, 4.5, 3.5, 4.5, 1.3, 0.5);
             }} else if (viewName === 'lounge') {{
-                gsapCameraTo(16, 4, -5, 13.8, 1.5, -7);
+                gsapCameraTo(16, 3.8, -5, 14.5, 1.4, -7);
             }}
         }}
 
         function gsapCameraTo(x, y, z, tx, ty, tz) {{
-            // Smooth Camera Transition Manual (lerp loop)
             const startPos = camera.position.clone();
             const endPos = new THREE.Vector3(x, y, z);
             const startTar = controls.target.clone();
@@ -1017,7 +1139,6 @@ def render_live_office_html():
             return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
         }}
 
-        // Audio Ambience Keyboard Typing Kantor (Web Audio API Synthesizer)
         function toggleAudio() {{
             if (!audioCtx) {{
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1032,10 +1153,9 @@ def render_live_office_html():
             if (isAudioPlaying) {{
                 btn.innerHTML = '🔊 <span class="hidden sm:inline">Suara Kantor: ON</span>';
                 btn.classList.add('bg-cyan-500/20', 'text-cyan-400');
-                // Interval bunyi ketikan keyboard acak
                 audioInterval = setInterval(() => {{
                     playKeyClick();
-                }}, 140);
+                }}, 135);
             }} else {{
                 btn.innerHTML = '🔇 <span class="hidden sm:inline">Suara Kantor</span>';
                 btn.classList.remove('bg-cyan-500/20', 'text-cyan-400');
@@ -1048,48 +1168,48 @@ def render_live_office_html():
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = 'triangle';
-            // Frekuensi click ketikan mekanikal
-            osc.frequency.setValueAtTime(400 + Math.random() * 600, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(450 + Math.random() * 650, audioCtx.currentTime);
             gain.gain.setValueAtTime(0.015, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.035);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.05);
+            osc.stop(audioCtx.currentTime + 0.045);
         }}
 
-        // Loop Animasi 3D (60 FPS)
         let clock = new THREE.Clock();
         function animate() {{
             requestAnimationFrame(animate);
 
             const elapsedTime = clock.getElapsedTime();
 
-            // 1. Animasi Tangan Mengetik di Meja & Kepala Mengangguk
+            // 1. Animasi Mengetik Alami & Menoleh Lembut
             characterGroups.forEach((cg, idx) => {{
                 const isWorking = cg.agentData.status === 'WORKING' || cg.agentData.status === 'DECIDING';
                 if (isWorking) {{
-                    const speed = 12 + (idx % 4);
-                    // Tangan mengetik bergantian
-                    cg.armL.rotation.x = -Math.PI / 3 + Math.sin(elapsedTime * speed) * 0.12;
-                    cg.armR.rotation.x = -Math.PI / 3 + Math.cos(elapsedTime * speed) * 0.12;
-                    // Kepala fokus sedikit bergerak memantau layar
-                    cg.head.rotation.y = Math.sin(elapsedTime * 1.5 + idx) * 0.15;
-                    cg.head.position.y = 1.05 + Math.sin(elapsedTime * 4) * 0.01;
+                    const speed = 11 + (idx % 3);
+                    const tapL = Math.sin(elapsedTime * speed) * 0.12;
+                    const tapR = Math.cos(elapsedTime * speed) * 0.12;
+
+                    cg.armL.rotation.x = -Math.PI / 3 + tapL;
+                    cg.armR.rotation.x = -Math.PI / 3 + tapR;
+                    cg.handL.position.y = 0.28 + tapL * 0.25;
+                    cg.handR.position.y = 0.28 + tapR * 0.25;
+
+                    cg.head.rotation.y = Math.sin(elapsedTime * 1.4 + idx) * 0.14;
+                    cg.head.position.y = 1.08 + Math.sin(elapsedTime * 3) * 0.01;
                 }} else {{
-                    // Mode Idle: Rileks
                     cg.armL.rotation.x = -Math.PI / 4;
                     cg.armR.rotation.x = -Math.PI / 4;
-                    cg.head.rotation.y = Math.sin(elapsedTime * 0.6 + idx) * 0.08;
+                    cg.head.rotation.y = Math.sin(elapsedTime * 0.5 + idx) * 0.06;
                 }}
             }});
 
-            // 2. Animasi Karyawan yang Berjalan di Koridor
+            // 2. Animasi Karyawan Berjalan Halus di Koridor
             walkingHumans.forEach(w => {{
                 w.progress += w.speed;
                 if (w.progress > 1) {{
                     w.progress = 0;
-                    // Tukar arah jalan bolak-balik
                     const tmp = w.start;
                     w.start = w.end;
                     w.end = tmp;
@@ -1097,23 +1217,19 @@ def render_live_office_html():
                 w.group.position.x = w.start[0] + (w.end[0] - w.start[0]) * w.progress;
                 w.group.position.z = w.start[2] + (w.end[2] - w.start[2]) * w.progress;
 
-                // Ayunan kaki saat berjalan
-                const legSwing = Math.sin(elapsedTime * 8) * 0.4;
+                const legSwing = Math.sin(elapsedTime * 7) * 0.35;
                 w.legL.rotation.x = legSwing;
                 w.legR.rotation.x = -legSwing;
             }});
 
-            // 3. Update Posisi Label 2D Nama di Layar
             updateFloatingTagsPosition();
 
             controls.update();
             renderer.render(scene, camera);
         }}
 
-        // Inisialisasi 3D saat dokumen siap
         window.addEventListener('DOMContentLoaded', init3D);
 
-        // Polling Real-time Update tiap 3 detik ke /api/live
         setInterval(async () => {{
             try {{
                 const res = await fetch('/api/live');
@@ -1121,13 +1237,11 @@ def render_live_office_html():
                 const data = await res.json();
                 if (!data || !data.office_metrics) return;
 
-                // Update metrik beban
                 document.getElementById('stat-load-text').innerText = data.office_metrics.overall_load_pct + '%';
                 document.getElementById('stat-load-bar').style.width = data.office_metrics.overall_load_pct + '%';
                 document.getElementById('stat-busy-text').innerText = data.office_metrics.busy_agents;
                 document.getElementById('stat-idle-text').innerText = data.office_metrics.idle_agents;
 
-                // Update status karyawan
                 if (data.agents) {{
                     data.agents.forEach(updatedAg => {{
                         const local = initialAgents.find(a => a.id === updatedAg.id);
@@ -1137,7 +1251,6 @@ def render_live_office_html():
                             local.speech = updatedAg.speech;
                             local.current_task = updatedAg.current_task;
 
-                            // Update live tag
                             const tag = document.getElementById(`tag-${{local.id}}`);
                             if (tag) {{
                                 const isBusy = local.status === 'WORKING' || local.status === 'DECIDING';
@@ -1145,12 +1258,11 @@ def render_live_office_html():
                                 if (badge) {{
                                     badge.innerText = local.status;
                                     badge.className = isBusy
-                                        ? 'text-[9px] px-1.5 py-0.2 rounded-full border font-mono bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
-                                        : 'text-[9px] px-1.5 py-0.2 rounded-full border font-mono bg-slate-800/80 text-slate-300 border-slate-700';
+                                        ? 'text-[9px] px-2 py-0.5 rounded-full border font-mono font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                                        : 'text-[9px] px-2 py-0.5 rounded-full border font-mono font-bold bg-slate-800/80 text-slate-300 border-slate-700';
                                 }}
                             }}
 
-                            // Update drawer jika sedang terbuka untuk agen ini
                             if (selectedAgentId === local.id) {{
                                 document.getElementById('drawer-speech').innerText = `"${{local.speech}}"`;
                                 document.getElementById('drawer-task').innerText = local.current_task;
