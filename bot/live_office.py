@@ -8,6 +8,300 @@ import pytz
 import config
 
 
+def generate_character_svg(agent: dict) -> str:
+    """
+    Menghasilkan ilustrasi SVG animasi vektor berkualitas tinggi:
+    Karyawan AI duduk di meja kantor dengan dual monitor, keyboard, cangkir kopi,
+    dan tangan yang mengetik secara aktif (jika sibuk) atau santai ngopi (jika kosong/idle).
+    """
+    aid = agent["id"]
+    status = agent["status"]
+    is_busy = status in ["WORKING", "DECIDING", "AUDITING"]
+    shirt_color = agent.get("theme_color", "#06b6d4")
+    accent_color = agent.get("accent_color", "#22d3ee")
+
+    # Custom styling accessories per agent
+    has_headphone = aid in ["AI_1", "AI_3"]
+    has_glasses = aid in ["AI_2", "AI_5", "SARI"]
+    has_tie = aid in ["AI_2", "HENDRA"]
+    is_judge = aid == "ARIF"
+
+    # Animasi CSS class
+    type_l_class = "animate-typing-l" if is_busy else ""
+    type_r_class = "animate-typing-r" if is_busy else ""
+    screen_chart_class = "animate-chart-glow" if is_busy else "opacity-50"
+    head_class = "animate-head-bob" if is_busy else "animate-head-idle"
+
+    # SVG Chart bars untuk monitor utama
+    chart_bars = ""
+    bar_heights = [18, 28, 22, 35, 30, 42, 38, 50, 45, 58] if is_busy else [20, 22, 21, 24, 20, 22, 23, 21, 22, 20]
+    for i, h in enumerate(bar_heights):
+        x = 96 + (i * 7)
+        y = 115 - h
+        color = "#34d399" if i % 3 != 1 else "#f87171"
+        chart_bars += f'<rect x="{x}" y="{y}" width="5" height="{h}" rx="1" fill="{color}" opacity="0.85" />'
+
+    # Side monitor terminal lines
+    term_lines = ""
+    for i in range(5):
+        y = 80 + (i * 7)
+        w = 30 + ((i * 11) % 25)
+        term_lines += f'<rect x="180" y="{y}" width="{w}" height="3" rx="1.5" fill="{accent_color}" opacity="0.75" />'
+
+    # Aksesori khusus meja
+    desk_accessory = ""
+    if is_judge:
+        # Palu Hakim (Gavel) di atas meja
+        desk_accessory = """
+        <!-- Palu Sidang Hakim Arif -->
+        <g transform="translate(255, 142)">
+            <rect x="0" y="8" width="22" height="6" rx="2" fill="#d97706" />
+            <rect x="8" y="0" width="6" height="22" rx="2" fill="#92400e" transform="rotate(-25 11 11)" />
+            <rect x="2" y="20" width="20" height="5" rx="1.5" fill="#78350f" />
+        </g>
+        """
+    else:
+        # Cangkir kopi kantor dengan asap mengepul
+        steam_anim = """
+        <path d="M 270 134 Q 272 128 269 122 Q 267 116 271 110" stroke="#94a3b8" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6">
+            <animate attributeName="d" values="M 270 134 Q 272 128 269 122 Q 267 116 271 110; M 270 134 Q 267 128 271 122 Q 274 116 269 110; M 270 134 Q 272 128 269 122 Q 267 116 271 110" dur="2.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.2;0.7;0.2" dur="2.5s" repeatCount="indefinite" />
+        </path>
+        """ if not is_busy else ""
+
+        desk_accessory = f"""
+        <!-- Cangkir Kopi Karyawan -->
+        <g transform="translate(262, 138)">
+            <rect x="0" y="4" width="16" height="18" rx="3" fill="#f8fafc" />
+            <rect x="2" y="7" width="12" height="12" rx="2" fill="#3b82f6" opacity="0.3" />
+            <!-- Gagang cangkir -->
+            <path d="M 16 7 Q 22 10 16 17" stroke="#f8fafc" stroke-width="2.5" fill="none" stroke-linecap="round" />
+            {steam_anim}
+        </g>
+        """
+
+    # Headset jika ada
+    headphone_svg = ""
+    if has_headphone:
+        headphone_svg = """
+        <!-- Headset Gaming / Call Center -->
+        <path d="M 184 72 A 16 16 0 0 1 216 72" stroke="#38bdf8" stroke-width="3" fill="none" />
+        <rect x="181" y="68" width="5" height="12" rx="2" fill="#0284c7" />
+        <rect x="214" y="68" width="5" height="12" rx="2" fill="#0284c7" />
+        <path d="M 215 76 Q 220 84 212 87" stroke="#38bdf8" stroke-width="1.5" fill="none" />
+        <circle cx="211" cy="87" r="2" fill="#38bdf8" />
+        """
+
+    # Kacamata jika ada
+    glasses_svg = ""
+    if has_glasses:
+        glasses_svg = """
+        <!-- Kacamata Smart -->
+        <g stroke="#38bdf8" stroke-width="1.5" fill="rgba(56, 189, 248, 0.15)">
+            <rect x="190" y="72" width="8" height="6" rx="2" />
+            <rect x="202" y="72" width="8" height="6" rx="2" />
+            <line x1="198" y1="75" x2="202" y2="75" />
+            <line x1="187" y1="74" x2="190" y2="74" />
+            <line x1="210" y1="74" x2="213" y2="74" />
+        </g>
+        """
+
+    # Dasi jika ada
+    tie_svg = ""
+    if has_tie:
+        tie_svg = """
+        <!-- Dasi Formal -->
+        <polygon points="199,94 201,94 202,112 200,116 198,112" fill="#ef4444" />
+        """
+
+    # Jubah Hakim Arif jika Hakim
+    robe_collar = ""
+    if is_judge:
+        robe_collar = """
+        <!-- Kerah Jubah Hakim Emas -->
+        <polygon points="192,92 200,105 208,92" fill="#fbbf24" opacity="0.9" />
+        <circle cx="200" cy="107" r="2.5" fill="#f59e0b" />
+        """
+
+    # Posisi tangan (mengetik vs santai)
+    if is_busy:
+        hands_svg = f"""
+        <!-- Tangan Mengetik di Keyboard (Aktif Bekerja) -->
+        <g class="{type_l_class}">
+            <!-- Lengan Kiri -->
+            <path d="M 178 114 Q 165 132 154 148" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
+            <!-- Tangan Kiri di atas keyboard -->
+            <ellipse cx="154" cy="148" rx="5" ry="4" fill="#fed7aa" />
+        </g>
+        <g class="{type_r_class}">
+            <!-- Lengan Kanan -->
+            <path d="M 222 114 Q 235 132 246 148" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
+            <!-- Tangan Kanan di atas keyboard/mouse -->
+            <ellipse cx="246" cy="148" rx="5" ry="4" fill="#fed7aa" />
+        </g>
+        """
+    else:
+        hands_svg = f"""
+        <!-- Tangan Santai (Mode Standby) -->
+        <!-- Lengan Kiri rileks di paha / meja -->
+        <path d="M 178 114 Q 170 135 165 150" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
+        <ellipse cx="165" cy="150" rx="5" ry="4" fill="#fed7aa" />
+        <!-- Lengan Kanan memegang meja / dekat kopi -->
+        <path d="M 222 114 Q 238 132 250 146" stroke="{shirt_color}" stroke-width="8" stroke-linecap="round" fill="none" />
+        <ellipse cx="250" cy="146" rx="5" ry="4" fill="#fed7aa" />
+        """
+
+    svg = f"""
+    <svg viewBox="0 0 400 220" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" class="select-none overflow-hidden rounded-xl">
+        <defs>
+            <!-- Gradasi Meja Kayu Premium -->
+            <linearGradient id="deskWood_{aid}" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#334155" />
+                <stop offset="15%" stop-color="#1e293b" />
+                <stop offset="100%" stop-color="#0f172a" />
+            </linearGradient>
+
+            <!-- Gradasi Cahaya Layar Monitor -->
+            <linearGradient id="monitorGlow_{aid}" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0284c7" stop-opacity="0.25" />
+                <stop offset="100%" stop-color="{shirt_color}" stop-opacity="0.05" />
+            </linearGradient>
+
+            <!-- Bayangan Halus -->
+            <filter id="softShadow_{aid}" x="-10%" y="-10%" width="120%" height="120%">
+                <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+            </filter>
+        </defs>
+
+        <!-- 1. Dinding & Latar Belakang Ruang Kantor Modern -->
+        <rect width="400" height="220" fill="#090d16" />
+        <rect x="0" y="160" width="400" height="60" fill="#050811" />
+        <!-- Garis partisi kantor minimalis -->
+        <line x1="0" y1="160" x2="400" y2="160" stroke="#1e293b" stroke-width="1.5" />
+        <!-- Lampu LED Ambient Backlight -->
+        <ellipse cx="200" cy="95" rx="140" ry="70" fill="{accent_color}" opacity="0.08" />
+
+        <!-- 2. Kursi Ergonomis Kantor (Mesh Swivel Chair) -->
+        <g filter="url(#softShadow_{aid})">
+            <!-- Sandaran Kepala Kursi -->
+            <rect x="182" y="32" width="36" height="16" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+            <!-- Sandaran Punggung Kursi Mesh -->
+            <path d="M 166 48 Q 200 45 234 48 L 230 115 Q 200 120 170 115 Z" fill="#1e293b" stroke="#334155" stroke-width="2" />
+            <line x1="172" y1="65" x2="228" y2="65" stroke="#334155" stroke-dasharray="3,3" />
+            <line x1="174" y1="85" x2="226" y2="85" stroke="#334155" stroke-dasharray="3,3" />
+            <line x1="176" y1="105" x2="224" y2="105" stroke="#334155" stroke-dasharray="3,3" />
+        </g>
+
+        <!-- 3. Karakter Karyawan AI (Wujud Orang Sedang Duduk) -->
+        <g id="employee-body" class="{head_class}">
+            <!-- Pundak & Badan Karyawan -->
+            <path d="M 162 115 Q 200 95 238 115 L 244 150 L 156 150 Z" fill="{shirt_color}" />
+            <!-- Detail Jahitan Baju / Jas -->
+            <path d="M 188 98 L 200 118 L 212 98" stroke="#ffffff" stroke-width="1.5" opacity="0.3" fill="none" />
+            {robe_collar}
+            {tie_svg}
+
+            <!-- Leher -->
+            <rect x="194" y="86" width="12" height="12" rx="2" fill="#fed7aa" />
+
+            <!-- Kepala / Wajah Orang -->
+            <ellipse cx="200" cy="74" rx="16" ry="18" fill="#fed7aa" />
+
+            <!-- Rambut Stylist Kantor -->
+            <path d="M 182 72 Q 183 54 200 54 Q 217 54 218 72 Q 208 64 200 64 Q 192 64 182 72 Z" fill="#1e293b" />
+
+            <!-- Mata Karyawan -->
+            <ellipse cx="194" cy="73" rx="2" ry="2.5" fill="#0f172a" />
+            <ellipse cx="206" cy="73" rx="2" ry="2.5" fill="#0f172a" />
+            <!-- Kacamata / Headphone jika ada -->
+            {glasses_svg}
+            {headphone_svg}
+
+            <!-- Senyum ramah -->
+            <path d="M 197 81 Q 200 84 203 81" stroke="#ea580c" stroke-width="1.2" fill="none" stroke-linecap="round" />
+        </g>
+
+        <!-- 4. Tangan Karyawan -->
+        {hands_svg}
+
+        <!-- 5. Meja Kerja Kantor (Perspective 3D Top Slabs) -->
+        <g filter="url(#softShadow_{aid})">
+            <!-- Permukaan Atas Meja -->
+            <polygon points="50,150 350,150 375,185 25,185" fill="url(#deskWood_{aid})" stroke="#475569" stroke-width="1" />
+            <!-- Sisi Depan Meja -->
+            <polygon points="25,185 375,185 375,195 25,195" fill="#0f172a" stroke="#334155" stroke-width="1" />
+            <!-- Kaki Meja Besi Minimalis -->
+            <rect x="40" y="195" width="8" height="25" fill="#334155" />
+            <rect x="352" y="195" width="8" height="25" fill="#334155" />
+        </g>
+
+        <!-- 6. Peralatan Kantor di Atas Meja -->
+        <!-- Monitor Utama (Menampilkan Chart Saham / Analisis) -->
+        <g transform="translate(85, 55)" filter="url(#softShadow_{aid})">
+            <!-- Kaki Monitor -->
+            <rect x="40" y="70" width="8" height="28" fill="#475569" />
+            <rect x="30" y="96" width="28" height="4" rx="2" fill="#334155" />
+            <!-- Bingkai Monitor -->
+            <rect x="0" y="0" width="88" height="70" rx="4" fill="#0f172a" stroke="#334155" stroke-width="2" />
+            <!-- Layar Monitor Nyala -->
+            <rect x="3" y="3" width="82" height="64" rx="2" fill="#020617" />
+            <!-- Chart Candlestick / Candlestick SVG di dalam Monitor -->
+            <g class="{screen_chart_class}">
+                {chart_bars}
+                <!-- Garis Tren EMA -->
+                <path d="M 98 105 Q 120 90 140 98 T 160 70" stroke="#38bdf8" stroke-width="1.5" fill="none" />
+            </g>
+            <!-- Logo Brand Monitor & LED power -->
+            <circle cx="44" cy="67.5" r="1" fill="#38bdf8" />
+        </g>
+
+        <!-- Monitor Kedua (Side Monitor Vertikal / Terminal Kode) -->
+        <g transform="translate(178, 62)" filter="url(#softShadow_{aid})">
+            <rect x="0" y="0" width="46" height="62" rx="3" fill="#0f172a" stroke="#334155" stroke-width="1.5" />
+            <rect x="2" y="2" width="42" height="58" rx="2" fill="#030712" />
+            <!-- Baris teks data mengalir -->
+            {term_lines}
+        </g>
+
+        <!-- Keyboard RGB Mekanikal -->
+        <g transform="translate(142, 155)">
+            <rect x="0" y="0" width="70" height="20" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1" />
+            <!-- Tombol keyboard menyala RGB -->
+            <line x1="4" y1="5" x2="66" y2="5" stroke="{accent_color}" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.8" />
+            <line x1="4" y1="10" x2="66" y2="10" stroke="{shirt_color}" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.8" />
+            <line x1="4" y1="15" x2="66" y2="15" stroke="{accent_color}" stroke-width="1.5" stroke-dasharray="5,2" opacity="0.8" />
+        </g>
+
+        <!-- Mouse & Mousepad -->
+        <g transform="translate(225, 156)">
+            <rect x="0" y="0" width="28" height="22" rx="3" fill="#0f172a" stroke="#334155" stroke-width="0.8" />
+            <ellipse cx="14" cy="11" rx="5" ry="8" fill="#334155" />
+            <line x1="14" y1="5" x2="14" y2="9" stroke="{accent_color}" stroke-width="1" />
+        </g>
+
+        <!-- Nameplate Meja Kantor Karyawan -->
+        <g transform="translate(48, 172)">
+            <polygon points="0,0 75,0 72,10 -3,10" fill="#0f172a" stroke="#e2e8f0" stroke-width="0.6" />
+            <text x="6" y="8" font-family="'JetBrains Mono', monospace" font-size="6.5" font-weight="bold" fill="#f8fafc">{aid} • {agent['name'].split()[1] if len(agent['name'].split()) > 1 else agent['name']}</text>
+        </g>
+
+        <!-- Aksesori Tambahan (Palu Hakim / Cangkir Kopi) -->
+        {desk_accessory}
+
+        <!-- Status Pill Mengambang di Atas Kepala Karakter -->
+        <g transform="translate(145, 14)">
+            <rect x="0" y="0" width="110" height="18" rx="9" fill="#0f172a" stroke="{'#10b981' if is_busy else '#64748b'}" stroke-width="1.5" filter="url(#softShadow_{aid})" />
+            <circle cx="10" cy="9" r="3.5" fill="{'#10b981' if is_busy else '#94a3b8'}" class="{'animate-ping' if is_busy else ''}" />
+            <circle cx="10" cy="9" r="3.5" fill="{'#10b981' if is_busy else '#94a3b8'}" />
+            <text x="20" y="12.5" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="bold" fill="{'#34d399' if is_busy else '#cbd5e1'}">
+                {'🔴 SIBUK BEKERJA' if is_busy else '🟢 STANDBY (KOSONG)'}
+            </text>
+        </g>
+    </svg>
+    """
+    return svg
+
+
 def get_live_office_data():
     """Mengambil status real-time aktivitas & kapasitas seluruh karyawan AI."""
     db_path = config.MEMORY_DB_PATH
@@ -15,70 +309,70 @@ def get_live_office_data():
     now_dt = datetime.now(tz)
     now_wib = now_dt.strftime("%d %B %Y • %H:%M:%S WIB")
 
-    # Daftar default profil karyawan
+    # Daftar profil karyawan AI lengkap dengan tema warna dan wujud
     agents = [
         {
             "id": "AI_1",
-            "name": "AI-1 Momentum Scalper",
-            "role": "Volume & Intraday Scalper",
+            "name": "AI-1 Gemini Scalper",
+            "role": "Volume & Momentum Scalper",
             "model": "Google Gemini 3.6 Flash",
             "avatar": "⚡",
-            "color": "cyan",
-            "desc": "Membaca spike volume 15m, posisi VWAP, dan breakout harga cepat.",
+            "theme_color": "#06b6d4",
+            "accent_color": "#22d3ee",
+            "desc": "Membaca lonjakan volume intraday 15m, posisi harga di atas VWAP, dan breakout cepat.",
             "status": "STANDBY",
             "capacity": 20,
-            "current_task": "Menunggu radar volume intraday & perintah /cek",
-            "speech": "Radar VWAP aktif. Belum ada lonjakan volume liar jam ini.",
+            "current_task": "Menunggu radar lonjakan volume intraday & perintah /cek",
+            "speech": "Radar volume intraday aktif. Belum ada lonjakan anomali di jam ini.",
             "total_tasks": 0,
-            "sentiment": "NEUTRAL",
             "desk_icon": "💻",
         },
         {
             "id": "AI_2",
-            "name": "AI-2 Risk & Trap Auditor",
+            "name": "AI-2 OpenAI 120B Auditor",
             "role": "Risk & Trap Guard",
             "model": "OpenAI GPT-OSS 120B (Groq)",
             "avatar": "🛡️",
-            "color": "rose",
-            "desc": "Mencari potensi bull trap, spread mahal, dan alasan menahan diri.",
+            "theme_color": "#f43f5e",
+            "accent_color": "#fb7185",
+            "desc": "Mencari potensi bull trap pucuk, spread mahal, dan alasan kuat menahan diri.",
             "status": "STANDBY",
             "capacity": 25,
             "current_task": "Audit risiko portofolio & spread order book",
-            "speech": "Disiplin modal adalah nomor satu. Jangan terburu-buru entry di pucuk.",
+            "speech": "Disiplin modal adalah nomor satu. Jangan beli di pucuk tanpa konfirmasi.",
             "total_tasks": 0,
-            "sentiment": "CAUTIOUS",
             "desk_icon": "📊",
         },
         {
             "id": "AI_3",
-            "name": "AI-3 Bandar & Flow Detector",
+            "name": "AI-3 Nemotron 550B Bandar",
             "role": "Smart Money & Flow Tracer",
             "model": "NVIDIA Nemotron 550B (OpenRouter)",
             "avatar": "🐋",
-            "color": "indigo",
-            "desc": "Menganalisis akumulasi bandar besar dan jejak transaksi institusi.",
+            "theme_color": "#10b981",
+            "accent_color": "#34d399",
+            "desc": "Menganalisis akumulasi bandar besar dan jejak transaksi institusi pasar modal.",
             "status": "STANDBY",
             "capacity": 30,
             "current_task": "Melacak jejak akumulasi bandar di saham likuid",
-            "speech": "Mendeteksi aliran dana rahasia. Mengikuti jejak smart money.",
+            "speech": "Mendeteksi aliran dana rahasia. Mengikuti jejak smart money institusi.",
             "total_tasks": 0,
-            "sentiment": "OBSERVING",
             "desk_icon": "🖥️",
         },
         {
             "id": "AI_4",
-            "name": "AI-4 Trend & Swing Guard",
+            "name": "AI-4 Qwen 3.8 Trend Guard",
             "role": "Trend Alignment & Swing",
             "model": "Alibaba Qwen 3.8 27B (Groq)",
             "avatar": "📈",
-            "color": "amber",
-            "desc": "Menjaga keselarasan tren EMA harian & rasio Risk/Reward.",
+            "theme_color": "#f59e0b",
+            "accent_color": "#fbbf24",
+            "desc": "Menjaga keselarasan tren EMA harian & rasio Risk/Reward minimal 1:2.",
             "status": "STANDBY",
             "capacity": 15,
             "current_task": "Menghitung jarak Support/Resistance & EMA harian",
-            "speech": "Tren adalah sahabat kita. Pastikan Risk/Reward minimal 1:2.",
+            "speech": "Trend adalah sahabat kita. Jangan melawan arah arus besar IHSG.",
             "total_tasks": 0,
-            "sentiment": "NEUTRAL",
             "desk_icon": "📑",
         },
         {
@@ -87,14 +381,14 @@ def get_live_office_data():
             "role": "Bayesian Probability Math",
             "model": "Quant Bayesian v1 (Python)",
             "avatar": "🧮",
-            "color": "emerald",
-            "desc": "Kalkulasi statistik murni, biaya fee 0.40%, dan probabilitas historis.",
+            "theme_color": "#3b82f6",
+            "accent_color": "#60a5fa",
+            "desc": "Kalkulasi statistik murni, potongan fee BEI 0.40%, dan probabilitas historis.",
             "status": "STANDBY",
             "capacity": 10,
             "current_task": "Kalibrasi data empiris & potongan fee BEI 0.40%",
-            "speech": "Probabilitas matematika siap dikomputasi begitu ada data baru.",
+            "speech": "Probabilitas matematika siap dikomputasi begitu ada ticker baru.",
             "total_tasks": 0,
-            "sentiment": "ANALYTICAL",
             "desk_icon": "🗄️",
         },
         {
@@ -103,14 +397,14 @@ def get_live_office_data():
             "role": "Chief Decider & Consensus",
             "model": "Ensemble Judge (>=3 Buy & >=60%)",
             "avatar": "⚖️",
-            "color": "purple",
+            "theme_color": "#a855f7",
+            "accent_color": "#c084fc",
             "desc": "Memimpin sidang 5 AI, memverifikasi konsensus, & mengetok palu BUY/WAIT.",
             "status": "STANDBY",
             "capacity": 15,
             "current_task": "Menunggu rekap suara 5 AI dari meja analis",
             "speech": "Palu sidang siap diketok. Sidang 5 AI akan dibuka jika ada perintah /cek.",
             "total_tasks": 0,
-            "sentiment": "READY",
             "desk_icon": "🔨",
         },
         {
@@ -119,14 +413,14 @@ def get_live_office_data():
             "role": "News & Macro Hunter",
             "model": "Daily Standup Analyst",
             "avatar": "📰",
-            "color": "sky",
+            "theme_color": "#0ea5e9",
+            "accent_color": "#38bdf8",
             "desc": "Riset perbandingan 30+ artikel berita 7 sektor BEI & sentimen global.",
             "status": "STANDBY",
             "capacity": 35,
             "current_task": "Scanning berita Kontan, Bisnis, CNBC, & Investor.id",
             "speech": "Memantau katalis komoditas, BI rate, dan sentimen sektor.",
             "total_tasks": 0,
-            "sentiment": "READING",
             "desk_icon": "☕",
         },
         {
@@ -135,14 +429,14 @@ def get_live_office_data():
             "role": "Technical Screener",
             "model": "Daily Standup Screener",
             "avatar": "🎯",
-            "color": "teal",
+            "theme_color": "#14b8a6",
+            "accent_color": "#2dd4bf",
             "desc": "Menyaring kandidat saham aktif dengan likuiditas tinggi.",
             "status": "STANDBY",
             "capacity": 25,
             "current_task": "Menjaga daftar pantau emiten potensial",
             "speech": "Daftar emiten LQ45 & Second Liner siap disaring.",
             "total_tasks": 0,
-            "sentiment": "READY",
             "desk_icon": "📋",
         },
         {
@@ -151,14 +445,14 @@ def get_live_office_data():
             "role": "Money Management Guard",
             "model": "Daily Standup Controller",
             "avatar": "💼",
-            "color": "orange",
+            "theme_color": "#f97316",
+            "accent_color": "#fb923c",
             "desc": "Memastikan batas alokasi modal simulasi & trailing stop disiplin.",
             "status": "STANDBY",
             "capacity": 15,
             "current_task": "Menjaga batas risiko portofolio simulasi Paper",
             "speech": "Portofolio Paper aman. Tidak ada batas risiko yang dilanggar.",
             "total_tasks": 0,
-            "sentiment": "CALM",
             "desk_icon": "🔒",
         },
     ]
@@ -209,7 +503,6 @@ def get_live_office_data():
             """)
             raw_logs = cur.fetchall()
             for r in raw_logs:
-                # Format waktu
                 time_str = r["created_at_wib"] or ""
                 try:
                     if "T" in time_str:
@@ -251,9 +544,6 @@ def get_live_office_data():
                     t_clean = (lv["ticker"] or "").replace(".JK", "")
                     ag["speech"] = f"[{t_clean}] {lv['reasoning_summary']}"
                     ag["current_task"] = f"Menganalisis {t_clean} ({lv['vote_direction']} • {lv['confidence_pct']:.0f}%)"
-
-                    # Hitung kapasitas berdasarkan kesibukan
-                    # Jika ada aktivitas, kita variasikan kapasitas 65% - 95%
                     ag["capacity"] = min(95, 45 + (ag["total_tasks"] % 40))
                     ag["status"] = "WORKING" if lv["vote_direction"] == "BUY" else "AUDITING"
 
@@ -261,7 +551,7 @@ def get_live_office_data():
                     ag["total_tasks"] = active_analyses_count
                     if last_analysis:
                         t_clean = (last_analysis["ticker"] or "").replace(".JK", "")
-                        ag["current_task"] = f"Ketok Palu Konsensus: {t_clean} -> {last_analysis['direction']}"
+                        ag["current_task"] = f"Ketok Palu Sidang: {t_clean} -> {last_analysis['direction']}"
                         ag["speech"] = f"Hasil sidang terakhir {t_clean} diputuskan {last_analysis['direction']} di harga Rp {last_analysis['entry_price']:,.0f}".replace(",", ".")
                         ag["capacity"] = 80
                         ag["status"] = "DECIDING"
@@ -295,24 +585,25 @@ def get_live_office_data():
 
 
 def render_live_office_html():
-    """Merender HTML Virtual Office AI Agent secara visual interaktif & responsif."""
+    """Merender HTML Virtual Office AI Agent secara visual interaktif, lengkap dengan wujud fisik orang di meja kerja."""
     data = get_live_office_data()
     metrics = data["office_metrics"]
     agents = data["agents"]
     logs = data["recent_logs"]
 
-    # Buat kartu meja kantor untuk masing-masing agent
+    # Buat kartu meja kantor + wujud visual orang untuk masing-masing agent
     agent_desks_html = ""
     for ag in agents:
+        is_busy = ag["status"] in ["WORKING", "DECIDING", "AUDITING"]
         status_color = (
             "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
             if ag["status"] in ["WORKING", "DECIDING"]
             else ("bg-amber-500/20 text-amber-300 border-amber-500/40" if ag["status"] == "AUDITING" else "bg-slate-700/40 text-slate-300 border-slate-600/40")
         )
         status_dot = (
-            "bg-emerald-400 animate-pulse"
+            "bg-emerald-400 animate-ping"
             if ag["status"] in ["WORKING", "DECIDING"]
-            else ("bg-amber-400 animate-pulse" if ag["status"] == "AUDITING" else "bg-slate-400")
+            else ("bg-amber-400 animate-ping" if ag["status"] == "AUDITING" else "bg-slate-400")
         )
 
         cap_color = (
@@ -321,27 +612,32 @@ def render_live_office_html():
             else ("bg-gradient-to-r from-amber-500 to-orange-400" if ag["capacity"] < 80 else "bg-gradient-to-r from-rose-500 to-pink-500")
         )
 
-        agent_desks_html += f"""
-        <div class="agent-desk relative rounded-2xl bg-slate-900/90 border border-slate-800/80 p-5 shadow-xl hover:border-cyan-500/50 transition-all duration-300 flex flex-col justify-between group overflow-hidden" data-agent-id="{ag['id']}">
-            <!-- Subtle Office Desk Background Pattern -->
-            <div class="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-cyan-500/5 blur-2xl pointer-events-none"></div>
+        # Generate wujud visual SVG orang lagi kerja di meja!
+        desk_svg = generate_character_svg(ag)
 
-            <!-- Desk Header: Avatar & Info -->
+        agent_desks_html += f"""
+        <div class="agent-desk relative rounded-2xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5 shadow-2xl hover:border-cyan-500/60 transition-all duration-300 flex flex-col justify-between group overflow-hidden" data-agent-id="{ag['id']}">
+            <!-- Glow Latar Belakang Meja -->
+            <div class="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none" style="background-color: {ag.get('theme_color', '#06b6d4')}"></div>
+
             <div>
+                <!-- Header Kartu Karyawan -->
                 <div class="flex items-start justify-between gap-3 mb-3">
                     <div class="flex items-center gap-3">
-                        <div class="relative w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl shadow-inner group-hover:scale-105 transition-transform">
+                        <div class="relative w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">
                             {ag['avatar']}
-                            <!-- Active desk typing indicator glow -->
-                            <span class="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                            <!-- Active pulse dot -->
+                            <span class="absolute -top-1 -right-1 flex h-3 w-3">
                                 <span class="{status_dot} absolute inline-flex h-full w-full rounded-full opacity-75"></span>
-                                <span class="{status_dot} relative inline-flex rounded-full h-3.5 w-3.5"></span>
+                                <span class="{status_dot} relative inline-flex rounded-full h-3 w-3"></span>
                             </span>
                         </div>
                         <div>
-                            <h3 class="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">{ag['name']}</h3>
-                            <div class="text-[11px] text-cyan-400 font-medium">{ag['role']}</div>
-                            <div class="text-[10px] text-slate-500 font-mono truncate max-w-[160px]">{ag['model']}</div>
+                            <h3 class="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
+                                {ag['name']}
+                            </h3>
+                            <div class="text-[11px] font-medium" style="color: {ag.get('accent_color', '#22d3ee')}">{ag['role']}</div>
+                            <div class="text-[10px] text-slate-500 font-mono truncate max-w-[170px]">{ag['model']}</div>
                         </div>
                     </div>
 
@@ -350,17 +646,24 @@ def render_live_office_html():
                     </span>
                 </div>
 
-                <!-- Speech Bubble (What the AI is thinking / saying right now) -->
-                <div class="relative my-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 text-xs text-slate-300 leading-relaxed font-sans shadow-inner">
+                <!-- WUJUD VISUAL KARYAWAN DI MEJA (SVG ANIMASI) -->
+                <div class="my-3 rounded-xl bg-slate-950/90 border border-slate-800/80 p-2 shadow-inner overflow-hidden relative group-hover:border-slate-700 transition-colors">
+                    <div class="relative w-full aspect-[400/220] flex items-center justify-center">
+                        {desk_svg}
+                    </div>
+                </div>
+
+                <!-- Thought Bubble / Dialog Balon Berpikir -->
+                <div class="relative my-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 text-xs text-slate-300 leading-relaxed font-sans shadow-inner">
                     <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                        <span>💬</span> <span>Aktivitas & Log Berpikir:</span>
+                        <span>💬</span> <span>Aktivitas & Log Berpikir Terkini:</span>
                     </div>
                     <p class="italic text-slate-200 line-clamp-3 agent-speech">"{ag['speech']}"</p>
                 </div>
             </div>
 
             <!-- Bottom: Capacity Meter & Desk Activity -->
-            <div class="space-y-2.5 pt-2 border-t border-slate-800/80 mt-2">
+            <div class="space-y-2 pt-2 border-t border-slate-800/80 mt-2">
                 <div>
                     <div class="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
                         <span class="flex items-center gap-1">{ag['desk_icon']} Beban Kerja (Kapasitas)</span>
@@ -372,7 +675,7 @@ def render_live_office_html():
                 </div>
 
                 <div class="flex justify-between items-center text-[11px] text-slate-400 pt-1">
-                    <span class="text-slate-500 truncate max-w-[150px] flex items-center gap-1">
+                    <span class="text-slate-500 truncate max-w-[160px] flex items-center gap-1">
                         ⚡ <span class="agent-task truncate">{ag['current_task']}</span>
                     </span>
                     <span class="font-mono text-cyan-400/90 font-semibold">{ag['total_tasks']} Tugas</span>
@@ -408,19 +711,53 @@ def render_live_office_html():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Virtual Office • Saham AI Agent (Live)</title>
+    <title>AI Virtual Office • Saham AI Agent (Live Realtime)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body {{ font-family: 'Plus Jakarta Sans', sans-serif; }}
         .font-mono {{ font-family: 'JetBrains Mono', monospace; }}
-        @keyframes subtle-pulse {{
-            0%, 100% {{ opacity: 1; }}
-            50% {{ opacity: 0.6; }}
+
+        /* Keyframes Animasi Tangan Mengetik Aktif */
+        @keyframes typeLeft {{
+            0%, 100% {{ transform: translateY(0); }}
+            50% {{ transform: translateY(-3.5px); }}
         }}
-        .office-live-ping {{
-            animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        @keyframes typeRight {{
+            0%, 100% {{ transform: translateY(-3.5px); }}
+            50% {{ transform: translateY(0); }}
+        }}
+        .animate-typing-l {{
+            animation: typeLeft 0.22s ease-in-out infinite;
+        }}
+        .animate-typing-r {{
+            animation: typeRight 0.22s ease-in-out infinite 0.11s;
+        }}
+
+        /* Keyframes Animasi Kepala Fokus */
+        @keyframes headBob {{
+            0%, 100% {{ transform: translateY(0) rotate(0deg); }}
+            50% {{ transform: translateY(-1.5px) rotate(0.4deg); }}
+        }}
+        @keyframes headIdle {{
+            0%, 100% {{ transform: translateY(0); }}
+            50% {{ transform: translateY(1.5px); }}
+        }}
+        .animate-head-bob {{
+            animation: headBob 1.6s ease-in-out infinite;
+        }}
+        .animate-head-idle {{
+            animation: headIdle 3s ease-in-out infinite;
+        }}
+
+        /* Keyframes Monitor Glow */
+        @keyframes chartGlow {{
+            0%, 100% {{ filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.4)); }}
+            50% {{ filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.7)); }}
+        }}
+        .animate-chart-glow {{
+            animation: chartGlow 2s ease-in-out infinite;
         }}
     </style>
 </head>
@@ -435,9 +772,9 @@ def render_live_office_html():
                 </div>
                 <div>
                     <h1 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                        AI Virtual Office <span class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span> LIVE MONITORING</span>
+                        AI Virtual Office <span class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span> LIVE SAAS</span>
                     </h1>
-                    <p class="text-xs text-slate-400">Monitoring Visual Karyawan AI yang Sedang Bekerja • Render 24/7</p>
+                    <p class="text-xs text-slate-400">Monitoring Wujud Karyawan AI yang Sedang Bekerja • Render 24/7</p>
                 </div>
             </div>
 
@@ -467,11 +804,11 @@ def render_live_office_html():
                 <div>
                     <div class="text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
                         <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Status Kantor Digital Karyawan AI
+                        Ruang Kerja Digital Karyawan AI Saham
                     </div>
-                    <h2 class="text-xl sm:text-2xl font-bold text-white mt-1">Meja Kerja Tim AI Saham Indonesia</h2>
+                    <h2 class="text-xl sm:text-2xl font-bold text-white mt-1">Virtual Floor: Meja & Wujud Karyawan AI</h2>
                     <p class="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-                        Anda dapat memantau secara langsung mana AI yang sedang penuh menganalisis data pasar dan mana yang sedang kosong/standby menanti instruksi baru.
+                        Setiap AI memiliki wujud visual duduk di mejanya masing-masing dengan dual monitor. Saat ada perintah analisis saham, tangan mereka mengetik cepat di keyboard dan monitor menyala aktif. Saat kosong, mereka santai di meja.
                     </p>
                 </div>
 
@@ -481,7 +818,7 @@ def render_live_office_html():
                         <div class="text-xl font-bold font-mono text-cyan-400" id="stat-office-load">{metrics['overall_load_pct']}%</div>
                     </div>
                     <div class="px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-right">
-                        <div class="text-[11px] text-slate-400 font-medium">Karyawan Aktif</div>
+                        <div class="text-[11px] text-slate-400 font-medium">Karyawan Bekerja</div>
                         <div class="text-xl font-bold font-mono text-emerald-400"><span id="stat-busy">{metrics['busy_agents']}</span> / {metrics['total_agents']}</div>
                     </div>
                 </div>
@@ -496,7 +833,7 @@ def render_live_office_html():
                     <span class="text-cyan-400">🤖</span>
                 </div>
                 <div class="text-2xl font-bold font-mono text-white mt-1.5">{metrics['total_agents']} <span class="text-xs text-slate-500 font-sans">Karyawan</span></div>
-                <div class="text-[11px] text-emerald-400 font-medium mt-1">Semua slot AI terpasang</div>
+                <div class="text-[11px] text-emerald-400 font-medium mt-1">9 Meja Kerja Lengkap</div>
             </div>
 
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
@@ -505,7 +842,7 @@ def render_live_office_html():
                     <span class="text-emerald-400">💼</span>
                 </div>
                 <div class="text-2xl font-bold font-mono text-emerald-400 mt-1.5" id="card-busy-count">{metrics['busy_agents']} <span class="text-xs text-slate-500 font-sans">Agent</span></div>
-                <div class="text-[11px] text-slate-400 font-medium mt-1">Audit, voting, & kalkulasi</div>
+                <div class="text-[11px] text-slate-400 font-medium mt-1">Mengetik & Analisis Pasar</div>
             </div>
 
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
@@ -514,7 +851,7 @@ def render_live_office_html():
                     <span class="text-slate-400">☕</span>
                 </div>
                 <div class="text-2xl font-bold font-mono text-amber-300 mt-1.5" id="card-idle-count">{metrics['idle_agents']} <span class="text-xs text-slate-500 font-sans">Agent</span></div>
-                <div class="text-[11px] text-slate-400 font-medium mt-1">Siap menerima task baru</div>
+                <div class="text-[11px] text-slate-400 font-medium mt-1">Siap Menerima Tugas Baru</div>
             </div>
 
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
@@ -523,25 +860,25 @@ def render_live_office_html():
                     <span class="text-blue-400">🗳️</span>
                 </div>
                 <div class="text-2xl font-bold font-mono text-cyan-400 mt-1.5">{metrics['total_votes_cast']} <span class="text-xs text-slate-500 font-sans">Keputusan</span></div>
-                <div class="text-[11px] text-slate-400 font-medium mt-1">Terekam di agent_memory.db</div>
+                <div class="text-[11px] text-slate-400 font-medium mt-1">Tersimpan di SQLite</div>
             </div>
         </div>
 
-        <!-- Section: Virtual Office Desks Grid -->
+        <!-- Section: Wujud Visual Meja Kerja Karyawan Grid -->
         <div>
             <div class="flex justify-between items-center mb-3.5">
                 <div>
                     <h3 class="text-base font-bold text-white flex items-center gap-2">
-                        <span>🪑 Meja Kerja Karyawan AI</span>
+                        <span>🪑 Wujud Visual Meja Kerja 9 Karyawan AI</span>
                     </h3>
-                    <p class="text-xs text-slate-400">Status wujud visual kerja, model yang dipakai, dan dialog log berpikir</p>
+                    <p class="text-xs text-slate-400">Perhatikan animasi tangan mengetik di keyboard dan chart monitor saat karyawan sedang bekerja</p>
                 </div>
                 <div class="text-xs font-mono text-slate-400 flex items-center gap-2">
-                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span> Auto-Sync: <span class="text-cyan-400" id="sync-counter">3s</span>
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Auto-Sync: <span class="text-cyan-400" id="sync-counter">3s</span>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="agent-desks-container">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="agent-desks-container">
                 {agent_desks_html}
             </div>
         </div>
@@ -555,7 +892,7 @@ def render_live_office_html():
                     </h3>
                     <p class="text-xs text-slate-400 mt-0.5">Transparansi komputasi: apa yang baru saja diputuskan para karyawan AI</p>
                 </div>
-                <span class="text-[11px] font-mono text-slate-500">Source: SQLite WAL</span>
+                <span class="text-[11px] font-mono text-slate-500">Database: agent_memory.db</span>
             </div>
 
             <div class="overflow-x-auto">
@@ -580,8 +917,8 @@ def render_live_office_html():
 
     <!-- Footer -->
     <footer class="border-t border-slate-900 py-6 text-center text-xs text-slate-500 mt-12 space-y-1">
-        <div>AI Virtual Office • Saham AI Agent IDX/BEI • Render Cloud 24/7</div>
-        <div class="text-[11px] text-slate-600">Dibuat khusus untuk Bos Dimas • Dilindungi UptimeRobot Auto-Keepalive</div>
+        <div>AI Virtual Office SaaS • Saham AI Agent BEI • Render Cloud 24/7</div>
+        <div class="text-[11px] text-slate-600">Dibuat khusus untuk Bos Dimas • UptimeRobot Keepalive Protected</div>
     </footer>
 
     <!-- Real-time Polling Script -->
@@ -605,7 +942,6 @@ def render_live_office_html():
                 const data = await res.json();
                 if (!data || !data.office_metrics) return;
 
-                // Update summary metrics
                 const loadEl = document.getElementById('stat-office-load');
                 if (loadEl) loadEl.innerText = data.office_metrics.overall_load_pct + '%';
 
@@ -618,7 +954,6 @@ def render_live_office_html():
                 const cardIdle = document.getElementById('card-idle-count');
                 if (cardIdle) cardIdle.innerHTML = data.office_metrics.idle_agents + ' <span class="text-xs text-slate-500 font-sans">Agent</span>';
 
-                // Update agent cards in-place
                 if (data.agents) {{
                     data.agents.forEach(ag => {{
                         const desk = document.querySelector(`.agent-desk[data-agent-id="${{ag.id}}"]`);
