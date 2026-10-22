@@ -218,10 +218,14 @@ def render_dashboard_html():
 
             <div class="flex items-center gap-2.5 text-xs">
                 <span class="text-slate-400 font-mono hidden md:inline">Terakhir Sync: <span class="text-slate-200">{data['last_updated']}</span></span>
+                <!-- Tombol ke Halaman Live Virtual Office Karyawan AI -->
+                <a href="/live" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition-all">
+                    🏢 Kantor AI (Live)
+                </a>
                 <button onclick="location.reload()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 font-medium border border-slate-700 flex items-center gap-1.5 transition">
                     🔄 Refresh
                 </button>
-                <a href="https://t.me" target="_blank" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium shadow transition">
+                <a href="https://t.me/Agent_d_saham_bot" target="_blank" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium shadow transition">
                     Chat Telegram ↗
                 </a>
             </div>

@@ -22,6 +22,24 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"status":"ok","service":"saham-ai-agent"}')
             return
 
+        # Real-time API Virtual Office Karyawan AI
+        if self.path.startswith("/api/live") or self.path.startswith("/api/office"):
+            try:
+                from bot.live_office import get_live_office_data
+                data = json.dumps(get_live_office_data()).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(f'{{"error":"{str(e)}"}}'.encode())
+                return
+
         if self.path.startswith("/api"):
             try:
                 from bot.dashboard import get_dashboard_summary
@@ -39,7 +57,25 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 self.wfile.write(f'{{"error":"{str(e)}"}}'.encode())
                 return
 
-        # Render Web Dashboard Monitoring Saham untuk Bos Dimas
+        # Halaman Virtual Office Karyawan AI (/live atau /office)
+        if self.path.startswith("/live") or self.path.startswith("/office"):
+            try:
+                from bot.live_office import render_live_office_html
+                html_content = render_live_office_html().encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(html_content)))
+                self.end_headers()
+                self.wfile.write(html_content)
+                return
+            except Exception as e:
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(f'{{"status":"error","page":"live","error":"{str(e)}"}}'.encode())
+                return
+
+        # Render Web Dashboard Monitoring & Rekap Saham Utama (Root /)
         try:
             from bot.dashboard import render_dashboard_html
             html_content = render_dashboard_html().encode("utf-8")
