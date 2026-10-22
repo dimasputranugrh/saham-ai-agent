@@ -723,7 +723,7 @@ def render_live_office_html():
                 const workstation = new THREE.Group();
                 workstation.position.set(pos[0], pos[1], pos[2]);
 
-                // 1. MEJA KERJA MODERN SUDUT MELENGKUNG (OVAL BEVELED SLAB)
+                // 1. MEJA KERJA MODERN MINIMALIS (Sleek Wooden Desk with Chamfered Corners)
                 const deskLength = isJudge ? 3.6 : 2.6;
                 const deskDepth = isJudge ? 1.7 : 1.35;
                 const deskTopMat = new THREE.MeshStandardMaterial({{
@@ -732,92 +732,115 @@ def render_live_office_html():
                     metalness: 0.1
                 }});
 
-                // Meja dengan Cylinder Pipih & Ujung Membulat (Tidak Tajam Kotak)
-                const deskTop = new THREE.Mesh(new THREE.CylinderGeometry(deskLength / 2, deskLength / 2, 0.12, 32), deskTopMat);
-                deskTop.scale.set(1, 1, deskDepth / deskLength);
-                deskTop.position.set(0, 1.3, 0);
+                // Permukaan Atas Meja (Top Surface tepat di y = 1.36)
+                const deskTop = new THREE.Mesh(new THREE.BoxGeometry(deskLength, 0.08, deskDepth), deskTopMat);
+                deskTop.position.set(0, 1.32, 0);
                 deskTop.castShadow = true;
                 deskTop.receiveShadow = true;
                 workstation.add(deskTop);
 
                 // Kaki Meja Silinder Chrome Halus
                 const chromeLegMat = new THREE.MeshStandardMaterial({{ color: 0x64748b, metalness: 0.9, roughness: 0.15 }});
-                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.3, 16), chromeLegMat);
-                leg1.position.set(-deskLength * 0.38, 0.65, -deskDepth * 0.28);
+                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.28, 16), chromeLegMat);
+                leg1.position.set(-deskLength * 0.42, 0.64, -deskDepth * 0.35);
                 leg1.castShadow = true;
                 workstation.add(leg1);
 
                 const leg2 = leg1.clone();
-                leg2.position.set(deskLength * 0.38, 0.65, -deskDepth * 0.28);
+                leg2.position.set(deskLength * 0.42, 0.64, -deskDepth * 0.35);
                 workstation.add(leg2);
 
                 const leg3 = leg1.clone();
-                leg3.position.set(-deskLength * 0.38, 0.65, deskDepth * 0.28);
+                leg3.position.set(-deskLength * 0.42, 0.64, deskDepth * 0.35);
                 workstation.add(leg3);
 
                 const leg4 = leg1.clone();
-                leg4.position.set(deskLength * 0.38, 0.65, deskDepth * 0.28);
+                leg4.position.set(deskLength * 0.42, 0.64, deskDepth * 0.35);
                 workstation.add(leg4);
 
-                // 2. MONITOR ULTRA-WIDE CURVED GAMING/QUANT SCREEN (LENGKUNG MODERN)
+                // 2. DUAL MONITOR DI ATAS MEJA (Tepat Berdiri di Permukaan Meja)
                 const monitorGroup = new THREE.Group();
-                monitorGroup.position.set(0, 1.36, -0.2);
+                monitorGroup.position.set(0, 1.36, -0.32); // Berdiri kokoh di atas meja
 
-                // Layar Melengkung menggunakan Cylinder Segment Halus
-                const screenRadius = 2.4;
-                const screenArc = Math.PI * 0.32;
-                const screenGeo = new THREE.CylinderGeometry(screenRadius, screenRadius, 0.78, 36, 1, true, -screenArc / 2, screenArc);
-                const screenMat = new THREE.MeshBasicMaterial({{
-                    color: ag.status === 'WORKING' ? 0x34d399 : (ag.status === 'DECIDING' ? 0xc084fc : 0x38bdf8),
-                    side: THREE.DoubleSide
-                }});
-                const curvedScreen = new THREE.Mesh(screenGeo, screenMat);
-                curvedScreen.position.set(0, 0.55, screenRadius - 0.2);
-                monitorGroup.add(curvedScreen);
-
-                // Backing Bezel Tipis Melengkung
-                const bezelMat = new THREE.MeshStandardMaterial({{ color: 0x020617, metalness: 0.8, roughness: 0.2, side: THREE.DoubleSide }});
-                const curvedBezel = new THREE.Mesh(
-                    new THREE.CylinderGeometry(screenRadius + 0.02, screenRadius + 0.02, 0.82, 36, 1, true, -screenArc / 2, screenArc),
-                    bezelMat
-                );
-                curvedBezel.position.copy(curvedScreen.position);
-                curvedBezel.castShadow = true;
-                monitorGroup.add(curvedBezel);
-
-                // Stand Monitor Ergonomis Melengkung
+                // Stand / Kaki Monitor Chrome di Atas Meja
                 const standBase = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.03, 24), chromeLegMat);
-                standBase.position.set(0, 0.02, 0);
+                standBase.position.set(0, 0.015, 0);
+                standBase.castShadow = true;
                 monitorGroup.add(standBase);
 
-                const standPole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.5, 16), chromeLegMat);
-                standPole.position.set(0, 0.26, 0);
-                standPole.rotation.x = 0.15;
+                // Tiang Monitor
+                const standPole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.55, 16), chromeLegMat);
+                standPole.position.set(0, 0.28, 0);
+                standPole.castShadow = true;
                 monitorGroup.add(standPole);
 
+                // Palang Gas-Spring Monitor
+                const crossBar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.2, 16), chromeLegMat);
+                crossBar.rotation.z = Math.PI / 2;
+                crossBar.position.set(0, 0.48, 0);
+                monitorGroup.add(crossBar);
+
+                // MONITOR UTAMA (Ultrawide 34" Display Menghadap ke Karyawan & Kamera)
+                const mainFrameMat = new THREE.MeshStandardMaterial({{ color: 0x020617, metalness: 0.85, roughness: 0.2 }});
+                const mainFrame = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.78, 0.05), mainFrameMat);
+                mainFrame.position.set(-0.15, 0.55, 0.04);
+                mainFrame.castShadow = true;
+                monitorGroup.add(mainFrame);
+
+                // Layar Monitor Utama (Glowing Chart Display)
+                const screenColor = ag.status === 'WORKING' ? 0x10b981 : (ag.status === 'DECIDING' ? 0xc084fc : 0x06b6d4);
+                const screenMat = new THREE.MeshStandardMaterial({{
+                    color: screenColor,
+                    emissive: screenColor,
+                    emissiveIntensity: 0.6,
+                    roughness: 0.2
+                }});
+                const mainScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.71), screenMat);
+                mainScreen.position.set(-0.15, 0.55, 0.07);
+                monitorGroup.add(mainScreen);
+
+                // MONITOR KEDUA (Vertikal / Terminal Kode - Dimiringkan ke Dalam)
+                const sideGroup = new THREE.Group();
+                sideGroup.position.set(0.85, 0.55, 0.08);
+                sideGroup.rotation.y = -0.38; // Miring menghadap wajah karyawan
+
+                const sideFrame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.85, 0.05), mainFrameMat);
+                sideFrame.castShadow = true;
+                sideGroup.add(sideFrame);
+
+                const sideScreenMat = new THREE.MeshStandardMaterial({{
+                    color: 0x0284c7,
+                    emissive: 0x0284c7,
+                    emissiveIntensity: 0.5,
+                    roughness: 0.2
+                }});
+                const sideScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.59, 0.79), sideScreenMat);
+                sideScreen.position.set(0, 0, 0.03);
+                sideGroup.add(sideScreen);
+
+                monitorGroup.add(sideGroup);
                 workstation.add(monitorGroup);
 
-                // Keyboard Chiclet Slim & Mouse Halus
-                const kb = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.02, 24), new THREE.MeshStandardMaterial({{ color: 0x0f172a, roughness: 0.4 }}));
-                kb.scale.set(1.4, 1, 0.55);
-                kb.position.set(0, 1.38, 0.28);
+                // KEYBOARD & MOUSE DI ATAS MEJA
+                const kb = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.02, 0.24), new THREE.MeshStandardMaterial({{ color: 0x0f172a, roughness: 0.4 }}));
+                kb.position.set(0, 1.37, 0.18);
                 workstation.add(kb);
 
-                const mouseMesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), new THREE.MeshStandardMaterial({{ color: 0x334155 }}));
-                mouseMesh.scale.set(0.8, 0.4, 1.2);
-                mouseMesh.position.set(0.65, 1.38, 0.28);
+                const mouseMesh = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), new THREE.MeshStandardMaterial({{ color: 0x334155, roughness: 0.3 }}));
+                mouseMesh.scale.set(0.8, 0.45, 1.2);
+                mouseMesh.position.set(0.55, 1.38, 0.18);
                 workstation.add(mouseMesh);
 
-                // Cangkir Kopi Keramik Halus
+                // CANGKIR KOPI KERAMIK DI ATAS MEJA
                 const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.065, 0.16, 20), new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.2 }}));
-                mug.position.set(-0.75, 1.44, 0.28);
+                mug.position.set(-0.7, 1.44, 0.2);
                 workstation.add(mug);
 
                 if (isJudge) {{
-                    // Palu Sidang Kayu Ukir (Gavel)
-                    const gavelHead = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.32, 16), new THREE.MeshStandardMaterial({{ color: 0xb45309, roughness: 0.3 }}));
+                    // Palu Sidang Kayu Ukir (Gavel) di Meja Chief Arthur
+                    const gavelHead = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.3, 16), new THREE.MeshStandardMaterial({{ color: 0xb45309, roughness: 0.3 }}));
                     gavelHead.rotation.z = Math.PI / 2;
-                    gavelHead.position.set(0.85, 1.42, 0.4);
+                    gavelHead.position.set(0.85, 1.42, 0.32);
                     workstation.add(gavelHead);
                 }}
 
@@ -825,24 +848,24 @@ def render_live_office_html():
                 const chairMat = new THREE.MeshStandardMaterial({{ color: isJudge ? 0x2e1065 : 0x1e293b, roughness: 0.6 }});
 
                 // Dudukan Kursi Membulat Lembut
-                const seatCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.44, 0.14, 24), chairMat);
-                seatCushion.position.set(0, 0.88, 0.85);
+                const seatCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.44, 0.12, 24), chairMat);
+                seatCushion.position.set(0, 0.88, 0.72);
                 workstation.add(seatCushion);
 
                 // Sandaran Punggung Melengkung Halus
                 const backCushion = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.95, 24, 1, false, 0, Math.PI), chairMat);
                 backCushion.rotation.y = Math.PI / 2;
-                backCushion.position.set(0, 1.42, 1.15);
+                backCushion.position.set(0, 1.42, 1.02);
                 workstation.add(backCushion);
 
                 // Tiang Hidrolik Kursi Bintang 5
                 const hydPost = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.8, 16), chromeLegMat);
-                hydPost.position.set(0, 0.4, 0.85);
+                hydPost.position.set(0, 0.4, 0.72);
                 workstation.add(hydPost);
 
-                // 4. KARAKTER KARYAWAN 3D HALUS & BERKELAS (BUKAN KOTAK)
+                // 4. KARAKTER KARYAWAN 3D HALUS & BERKELAS (Duduk Mengetik di Meja)
                 const avatarGroup = new THREE.Group();
-                avatarGroup.position.set(0, 0.88, 0.82);
+                avatarGroup.position.set(0, 0.88, 0.68);
 
                 // Badan / Torso Silinder Tapered (Lebar di Bahu, Ramping di Pinggang)
                 const bodyMat = new THREE.MeshStandardMaterial({{ color: ag.hex, roughness: 0.55, metalness: 0.05 }});
@@ -878,17 +901,17 @@ def render_live_office_html():
                 hair.position.set(0, 1.13, 0.03);
                 avatarGroup.add(hair);
 
-                // Mata Stylist 3D Berkilau
+                // Mata Stylist 3D Berkilau Menatap ke Monitor
                 const eyeMat = new THREE.MeshBasicMaterial({{ color: 0x0f172a }});
                 const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), eyeMat);
-                eyeL.position.set(-0.08, 1.08, 0.28);
+                eyeL.position.set(-0.08, 1.08, -0.24); // Menghadap ke arah monitor (-z)
                 avatarGroup.add(eyeL);
 
                 const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), eyeMat);
-                eyeR.position.set(0.08, 1.08, 0.28);
+                eyeR.position.set(0.08, 1.08, -0.24);
                 avatarGroup.add(eyeR);
 
-                // Aksesori Khusus (Headset RGB untuk Scalper / Kacamata untuk Auditor)
+                // Aksesori Khusus (Headset RGB untuk Scalper)
                 if (ag.id === 'AI_1') {{
                     const band = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.03, 16, 32, Math.PI), new THREE.MeshStandardMaterial({{ color: 0x06b6d4, roughness: 0.2 }}));
                     band.rotation.z = Math.PI;
@@ -905,23 +928,23 @@ def render_live_office_html():
                     avatarGroup.add(earcupR);
                 }}
 
-                // Lengan Halus Sendi Silinder & Telapak Tangan (Animated Typing)
+                // Lengan Halus Sendi Silinder & Telapak Tangan (Tepat di Atas Keyboard)
                 const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.45, 16), bodyMat);
-                armL.position.set(-0.34, 0.46, -0.15);
-                armL.rotation.x = -Math.PI / 3;
+                armL.position.set(-0.32, 0.46, -0.2);
+                armL.rotation.x = Math.PI / 3;
                 avatarGroup.add(armL);
 
                 const handL = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), skinMat);
-                handL.position.set(-0.34, 0.28, -0.32);
+                handL.position.set(-0.32, 0.28, -0.42);
                 avatarGroup.add(handL);
 
                 const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.45, 16), bodyMat);
-                armR.position.set(0.34, 0.46, -0.15);
-                armR.rotation.x = -Math.PI / 3;
+                armR.position.set(0.32, 0.46, -0.2);
+                armR.rotation.x = Math.PI / 3;
                 avatarGroup.add(armR);
 
                 const handR = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), skinMat);
-                handR.position.set(0.34, 0.28, -0.32);
+                handR.position.set(0.32, 0.28, -0.42);
                 avatarGroup.add(handR);
 
                 workstation.add(avatarGroup);
@@ -936,7 +959,7 @@ def render_live_office_html():
                     handR: handR,
                     head: head,
                     avatarGroup: avatarGroup,
-                    curvedScreen: curvedScreen
+                    mainScreen: mainScreen
                 }};
 
                 deskMeshes.push(deskTop);
@@ -1191,16 +1214,16 @@ def render_live_office_html():
                     const tapL = Math.sin(elapsedTime * speed) * 0.12;
                     const tapR = Math.cos(elapsedTime * speed) * 0.12;
 
-                    cg.armL.rotation.x = -Math.PI / 3 + tapL;
-                    cg.armR.rotation.x = -Math.PI / 3 + tapR;
+                    cg.armL.rotation.x = Math.PI / 3 + tapL;
+                    cg.armR.rotation.x = Math.PI / 3 + tapR;
                     cg.handL.position.y = 0.28 + tapL * 0.25;
                     cg.handR.position.y = 0.28 + tapR * 0.25;
 
                     cg.head.rotation.y = Math.sin(elapsedTime * 1.4 + idx) * 0.14;
                     cg.head.position.y = 1.08 + Math.sin(elapsedTime * 3) * 0.01;
                 }} else {{
-                    cg.armL.rotation.x = -Math.PI / 4;
-                    cg.armR.rotation.x = -Math.PI / 4;
+                    cg.armL.rotation.x = Math.PI / 4;
+                    cg.armR.rotation.x = Math.PI / 4;
                     cg.head.rotation.y = Math.sin(elapsedTime * 0.5 + idx) * 0.06;
                 }}
             }});
