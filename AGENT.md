@@ -14,16 +14,17 @@ Project ini adalah **AI Stock Agent untuk Saham Indonesia (BEI/IDX)** dengan fit
 
 ---
 
-## 2. Struktur Tim 5 AI + 1 Supreme Arbiter (Ensemble Consensus)
-Analisis saham tidak hanya mengandalkan 1 AI, melainkan melalui sidang panel 5 AI lintas perusahaan:
+## 2. Struktur Tim 6 AI + 1 Supreme Arbiter (Ensemble Consensus)
+Analisis saham tidak hanya mengandalkan 1 AI, melainkan melalui sidang panel 6 AI lintas perusahaan:
 
 1. **`AI_1` — Momentum Scalper:** `gemini-3.6-flash` (Google) $\rightarrow$ Fokus lonjakan volume intraday & VWAP.
 2. **`AI_2` — Risk & Trap Auditor:** `openai/gpt-oss-120b` via Groq (OpenAI 120B) $\rightarrow$ Mengaudit risiko jebakan bandar (*bull trap*) & spread.
 3. **`AI_3` — Bandar & Aliran Dana:** `nvidia/nemotron-3-ultra-550b-a55b:free` via OpenRouter (NVIDIA 550B) $\rightarrow$ Membaca akumulasi bandar.
 4. **`AI_4` — Trend & Swing Guard:** `qwen/qwen3.8-27b` via Groq (Alibaba Qwen 3.8) $\rightarrow$ Menjaga keselarasan tren harian & Risk/Reward.
 5. **`AI_5` — Quant Bayesian Memory:** `quant-bayesian-v1` (Lokal Python) $\rightarrow$ Murni rumus matematika & database memori tanpa bias LLM.
-6. **Chief Arthur (Supreme Decider / Final Arbiter):** Menghitung suara setuju (`buy_count / 5`) dan persentase kelayakan (`% Works`), lalu memutuskan **BUY** (jika $\ge 3$ AI setuju dan $\ge 60\%$ Works) atau **WAIT**.
-7. **Tim DSU Harian:** Bastian (Macro Intel), Serena (Market Screener), Damian (Chief Risk Officer), dan Chief Arthur.
+6. **`AI_6` — Pattern & Reversal Master:** `gemini-3.5-flash-lite` (Google) $\rightarrow$ Konfirmasi pola candlestick reversal (Hammer, Engulfing, Rejection Wick) & filter false breakout.
+7. **Chief Arthur (Supreme Decider / Final Arbiter):** Menghitung suara setuju (`buy_count / 6`) dan persentase kelayakan (`% Works`), lalu memutuskan **BUY** (jika $\ge 4$ AI setuju atau $\ge 3$ AI bersyarat) atau **WAIT**.
+8. **Tim DSU Harian:** Bastian (Macro Intel), Serena (Market Screener), Damian (Chief Risk Officer), dan Chief Arthur.
 
 ---
 

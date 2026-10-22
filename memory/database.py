@@ -671,6 +671,14 @@ class MemoryDatabase:
                 "Murni menghitung probabilitas matematika, biaya transaksi 0.40%, dan rekam jejak database memori historis.",
                 0.0,
             ),
+            (
+                "AI_6",
+                "AI-6 (Pattern & Reversal Master)",
+                "gemini",
+                "gemini-3.5-flash-lite",
+                "Fokus membaca konfirmasi pola candlestick reversal (Hammer, Bullish Engulfing, Rejection Wick), serta menyaring false breakout.",
+                0.2,
+            ),
         ]
         for slot_id, ai_name, provider, model_id, role_focus, temp in default_slots:
             conn.execute(

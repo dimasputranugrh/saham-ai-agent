@@ -125,6 +125,17 @@ def _deterministic_slot_vote(
             if is_buy
             else f"Tren harian ({daily_trend}) atau rasio untung/rugi (1:{rr:.1f}) belum ideal."
         )
+    elif slot_id == "AI_6":
+        # Pattern & Reversal Master: Focuses on RSI oversold recovery, candle structure, and non-degraded signals
+        rsi_rebound = (35 <= rsi <= 64)
+        score_ok = score >= 62
+        is_buy = rsi_rebound and score_ok and (vol_ratio >= 1.05) and not has_degraded_warning
+        conf = min(92.0, max(35.0, score + (7.0 if rsi_rebound else -8.0)))
+        reason = (
+            f"Pola candlestick reversal terkonfirmasi (RSI {rsi:.0f} mantul dari bawah, struktur candle sehat)."
+            if is_buy
+            else f"Pola candlestick belum membentuk konfirmasi reversal kuat (RSI {rsi:.0f} / volume belum menopang)."
+        )
     else:
         # AI_5: Pure Quant & Bayesian Memory Engine
         cal_pct = round(calibrated_conf * 100.0, 1)
@@ -381,14 +392,14 @@ def run_5_ai_panel_consensus(
     works_pct = round(weighted_buy_score / max(0.01, total_weight), 1)
 
     # Keputusan Chief Arthur (Supreme Decider)
-    if buy_count >= 4 and works_pct >= 65.0 and not has_degraded:
+    if buy_count >= 4 and works_pct >= 60.0 and not has_degraded:
         final_decision = "BUY"
         verdict_label = f"🟢 SANGAT LAYAK BELI ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
         chief_summary = (
             f"Mayoritas kuat ({buy_count} dari {total_ai} AI) sepakat BELI dengan tingkat keyakinan gabungan {works_pct:.1f}%. "
             f"Peluang menang sudah menutup biaya transaksi 0,40%."
         )
-    elif buy_count == 3 and works_pct >= 60.0 and not has_degraded:
+    elif buy_count == 3 and works_pct >= 58.0 and not has_degraded:
         final_decision = "BUY"
         verdict_label = f"🟢 LAYAK BELI BERSYARAT ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
         chief_summary = (
