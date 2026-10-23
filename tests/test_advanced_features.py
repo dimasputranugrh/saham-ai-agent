@@ -108,6 +108,23 @@ class TestAdvancedFeatures(unittest.TestCase):
                 html = response.read().decode()
                 self.assertIn("TradingView", html)
 
+    def test_job_queue_day_indices(self):
+        """Pastikan semua tuple days pada telegram JobQueue berada dalam rentang valid 0..6 (Sun..Sat)."""
+        from telegram.ext import JobQueue
+        cron_len = len(JobQueue._CRON_MAPPING)
+        self.assertEqual(cron_len, 7)
+
+        # Cek kode di bot/telegram_bot.py
+        import inspect
+        import bot.telegram_bot as tb
+        src = inspect.getsource(tb.start_telegram_bot)
+        import re
+        day_tuples = re.findall(r"days=\(([^)]+)\)", src)
+        for dt_str in day_tuples:
+            indices = [int(x.strip()) for x in dt_str.split(",") if x.strip()]
+            for idx in indices:
+                self.assertTrue(0 <= idx < 7, f"Index hari {idx} di luar rentang JobQueue (0..6)")
+
 
 if __name__ == "__main__":
     unittest.main()

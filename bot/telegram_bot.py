@@ -684,10 +684,11 @@ def start_telegram_bot():
             )
 
         # 7. Radar Berita Akhir Pekan (Sabtu & Minggu Pagi jam 09:30 WIB)
+        # Catatan: PTB JobQueue menggunakan index 0=Minggu (Sun), 1=Senin, ..., 6=Sabtu (Sat)
         job_queue.run_daily(
             scheduled_weekend_news_radar,
             time=dt.time(hour=9, minute=30, tzinfo=wib),
-            days=(6, 7),
+            days=(0, 6),
             name="weekend_news_radar_0930",
         )
 
