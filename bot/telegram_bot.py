@@ -515,6 +515,17 @@ async def scheduled_sector_news_radar(context: ContextTypes.DEFAULT_TYPE):
     await _send_safe_markdown(context.bot, report, chat_id=chat_id)
 
 
+async def scheduled_weekend_news_radar(context: ContextTypes.DEFAULT_TYPE):
+    """Memindai berita 7 sektor & pergerakan komoditas dunia pada Sabtu dan Minggu pagi untuk persiapan hari Senin."""
+    chat_id = config.TELEGRAM_CHAT_ID
+    if not chat_id or chat_id.startswith("masukkan_"):
+        return
+    logger.info("Menjalankan Radar Berita Akhir Pekan (Sabtu/Minggu)...")
+    report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
+    header = "☕ *RADAR BERITA AKHIR PEKAN (INTELIJEN HARI SENIN)* 📰\n_Bursa memang libur, tapi arus berita & katalis emiten tidak pernah tidur!_\n\n"
+    await _send_safe_markdown(context.bot, header + report, chat_id=chat_id)
+
+
 def start_telegram_bot():
     token = config.TELEGRAM_BOT_TOKEN
     if not token or token.startswith("masukkan_"):
@@ -610,6 +621,14 @@ def start_telegram_bot():
                 days=(1, 2, 3, 4, 5),
                 name=f"sector_news_radar_{nh:02d}_{nm:02d}",
             )
+
+        # 7. Radar Berita Akhir Pekan (Sabtu & Minggu Pagi jam 09:30 WIB)
+        job_queue.run_daily(
+            scheduled_weekend_news_radar,
+            time=dt.time(hour=9, minute=30, tzinfo=wib),
+            days=(6, 7),
+            name="weekend_news_radar_0930",
+        )
 
     logger.info("🤖 Karyawan AI Saham siap bekerja! Menunggu perintah di Telegram & menjalankan jadwal harian...")
     app.run_polling(drop_pending_updates=False)

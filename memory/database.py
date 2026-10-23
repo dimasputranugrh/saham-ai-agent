@@ -717,8 +717,8 @@ class MemoryDatabase:
         slot = slot_id.strip().upper()
         if not slot.startswith("AI_"):
             slot = f"AI_{slot}"
-        if slot not in {"AI_1", "AI_2", "AI_3", "AI_4", "AI_5"}:
-            raise ValueError(f"Slot tidak valid: {slot_id}. Pilih AI_1 sampai AI_5.")
+        if slot not in {"AI_1", "AI_2", "AI_3", "AI_4", "AI_5", "AI_6"}:
+            raise ValueError(f"Slot tidak valid: {slot_id}. Pilih AI_1 sampai AI_6.")
 
         spec = new_model_spec.strip()
         if ":" in spec:

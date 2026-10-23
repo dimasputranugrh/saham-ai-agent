@@ -105,6 +105,26 @@ def compute_vwap(df: pd.DataFrame) -> pd.Series:
     return (cum_tp_vol / cum_vol).ffill()
 
 
+def compute_cmf(df: pd.DataFrame, period: int = 20) -> pd.Series:
+    """
+    Menghitung Chaikin Money Flow (CMF 20) sebagai proxy aliran dana institusi & asing di BEI.
+    - CMF > +0.08: Akumulasi institusi kuat (Inflow).
+    - CMF < -0.08: Distribusi / Guyuran asing/institusi masif (Outflow).
+    """
+    if df.empty or len(df) < 5:
+        return pd.Series(0.0, index=df.index)
+    high = df["High"]
+    low = df["Low"]
+    close = df["Close"]
+    vol = df["Volume"]
+    hl_diff = (high - low).replace(0, np.nan)
+    mf_multiplier = ((close - low) - (high - close)) / hl_diff
+    mf_volume = mf_multiplier.fillna(0.0) * vol
+    sum_mfv = mf_volume.rolling(period, min_periods=5).sum()
+    sum_vol = vol.rolling(period, min_periods=5).sum().replace(0, np.nan)
+    return (sum_mfv / sum_vol).fillna(0.0)
+
+
 @dataclass
 class TechnicalSnapshot:
     ticker: str
@@ -172,6 +192,11 @@ class TechnicalSnapshot:
     estimated_net_return_pct: float = 0.0
     data_is_valid: bool = True
     validation_notes: str = "Valid OHLCV data"
+    # Institutional & Advanced Quant Fields (Freqtrade, TradingAgents, FinRL inspired)
+    cmf_20: float = 0.0
+    foreign_flow_status: str = "NETRAL"
+    recommended_lots: int = 1
+    trailing_stop_plan: str = "Aktif jika gain >= +1.5% (kunci modal BEP +0.5%)"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -216,6 +241,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     df_daily["BB_LOWER"] = bb_l
     df_daily["ATR"] = compute_atr(df_daily, 14)
     df_daily["VOL_MA20"] = df_daily["Volume"].rolling(20).mean().replace(0, np.nan)
+    df_daily["CMF"] = compute_cmf(df_daily, 20)
 
     last_d = df_daily.iloc[-1]
     prev_d = df_daily.iloc[-2] if len(df_daily) >= 2 else last_d
@@ -224,6 +250,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     prev_close = float(prev_d["Close"])
     day_high = float(last_d["High"])
     day_low = float(last_d["Low"])
+    cmf_val = round(float(last_d["CMF"]), 3) if not np.isnan(last_d["CMF"]) else 0.0
 
     # --- 2. Perhitungan Indikator Intraday 15 Menit (Untuk Sinyal "Jam Segini") ---
     intra_vwap = current_price
@@ -410,37 +437,80 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     if entry_low == entry_high:
         entry_low = round_idx_tick(entry_high * 0.99, is_idx)
 
-    # Stop Loss di bawah Support 1 / 1.2x ATR (maks risiko sekitar 2.5% - 4%)
-    raw_sl = min(entry_low - 0.9 * atr_val, support_1 - 0.4 * atr_val)
-    raw_sl = max(raw_sl, entry_high * 0.955)  # Batasi risiko maksimal ~4.5%
+    # Stop Loss di bawah Support 1 / 1.0x ATR (perketat risiko maksimal ~2.5% agar terhindar dari rugi dalam)
+    raw_sl = min(entry_low - 0.75 * atr_val, support_1 - 0.35 * atr_val)
+    raw_sl = max(raw_sl, entry_high * 0.975)  # Batasi risiko maksimal ~2.5%
     stop_loss = round_idx_tick(raw_sl, is_idx)
     if stop_loss >= entry_low:
-        stop_loss = round_idx_tick(entry_low * 0.97, is_idx)
+        stop_loss = round_idx_tick(entry_low * 0.985, is_idx)
 
-    risk_per_share = max(entry_high - stop_loss, entry_high * 0.015)
-    tp1 = round_idx_tick(max(resistance_1, entry_high + 1.6 * risk_per_share), is_idx)
-    tp2 = round_idx_tick(max(resistance_2, entry_high + 2.8 * risk_per_share), is_idx)
+    risk_per_share = max(entry_high - stop_loss, entry_high * 0.012)
+    min_tp1_threshold = entry_high * 1.025  # Minimal potensi cuan kotor +2.5% agar RRR sehat
+    tp1 = round_idx_tick(max(resistance_1, entry_high + 2.0 * risk_per_share, min_tp1_threshold), is_idx)
+    tp2 = round_idx_tick(max(resistance_2, entry_high + 3.2 * risk_per_share, entry_high * 1.045), is_idx)
 
-    rr_ratio = round((tp1 - entry_high) / risk_per_share, 2) if risk_per_share > 0 else 1.5
+    rr_ratio = round((tp1 - entry_high) / risk_per_share, 2) if risk_per_share > 0 else 2.0
 
     # --- 6. Evaluasi Spread Bid-Ask, Bukti Pendukung vs Penentang, & Setup Classification ---
     tick_sz = get_idx_tick_size(current_price, is_idx)
     spread_pct = round((tick_sz / current_price) * 100.0, 4) if current_price > 0 else 0.0
     total_fee_slip_pct = config.FEE_BUY_PCT + config.FEE_SELL_PCT + config.DEFAULT_SLIPPAGE_PCT
+    atr_pct = round((atr_val / current_price) * 100.0, 2) if current_price > 0 else 0.0
 
     supporting_ev: list[str] = list(signals)
     opposing_ev: list[str] = []
 
-    if current_price < ema20_d:
+    # Deteksi Bahaya Pisau Jatuh (Downtrend Knife Protection - cegah kerugian seperti di BBRI/BMRI)
+    is_downtrend = current_price < ema20_d < ema50_d
+    if is_downtrend:
+        score -= 15
+        opposing_ev.append(
+            f"DOWNTREND STRUKTURAL: Harga (Rp {current_price:,.0f}) di bawah EMA20 (Rp {ema20_d:,.0f}) & EMA50 (Rp {ema50_d:,.0f}). Dilarang tangkap pisau jatuh!"
+        )
+    elif current_price < ema20_d:
         opposing_ev.append(f"Harga (Rp {current_price:,.0f}) masih di bawah EMA20 Daily (Rp {ema20_d:,.0f})")
+
+    # Evaluasi Aliran Dana Asing / Institusi via CMF (Chaikin Money Flow)
+    sector_name = config.SECTOR_MAP.get(ticker.upper(), "OTHER")
+    is_big_bank = sector_name == "FINANCE" or ticker.upper() in {"BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK"}
+    if cmf_val >= 0.08:
+        foreign_flow_status = "AKUMULASI KUAT (Big Money Inflow)"
+        score += 8
+        signals.append(f"Arus dana institusi/asing positif kuat (CMF: {cmf_val:+.2f})")
+    elif cmf_val >= 0.02:
+        foreign_flow_status = "AKUMULASI RINGAN (Inflow Terpantau)"
+        score += 4
+        signals.append(f"Arus dana institusi positif (CMF: {cmf_val:+.2f})")
+    elif cmf_val <= -0.08:
+        foreign_flow_status = "DISTRIBUSI MASIF (Guyuran Dana Asing/Institusi)"
+        score -= 12
+        opposing_ev.append(f"Guyuran/Distribusi dana institusi masif (CMF: {cmf_val:+.2f})")
+    elif cmf_val <= -0.03:
+        foreign_flow_status = "DISTRIBUSI RINGAN (Outflow Terpantau)"
+        score -= 6
+        opposing_ev.append(f"Tekanan jual/outflow dana institusi (CMF: {cmf_val:+.2f})")
+    else:
+        foreign_flow_status = "NETRAL (Aliran Dana Berimbang)"
+
+    if is_big_bank and cmf_val < -0.04:
+        score -= 14
+        opposing_ev.append(
+            f"ARUS DANA PERBANKAN NEGATIF: CMF ({cmf_val:+.2f}) mendeteksi aksi keluar dana asing dari saham bank!"
+        )
+
     if current_price < intra_vwap:
         opposing_ev.append(f"Harga masih di bawah VWAP Intraday (Rp {intra_vwap:,.0f})")
     if max_vol_surge < 1.0:
         opposing_ev.append(f"Volume transaksi relatif sepi ({max_vol_surge:.2f}x rata-rata)")
-    if spread_pct > 0.80:
+    if spread_pct > 0.70:
         score -= 18
         opposing_ev.append(
             f"Spread minimum 1 tick terlalu lebar ({spread_pct:.2f}% per tick) dibanding biaya transaksi ({total_fee_slip_pct:.2f}%)"
+        )
+    if atr_pct > 5.5:
+        score -= 10
+        opposing_ev.append(
+            f"Volatilitas ATR harian terlalu liar ({atr_pct:.1f}% dari harga). Risiko slippage & gap down ekstrem."
         )
 
     score = int(max(5, min(98, score)))
@@ -449,25 +519,62 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     est_gross_ret_pct = round(((tp1 - entry_high) / entry_high) * 100.0, 2) if entry_high > 0 else 0.0
     est_net_ret_pct = round(est_gross_ret_pct - total_fee_slip_pct, 2)
 
-    # Tentukan Setup Type & Direction secara objektif
-    if spread_pct > 1.0 or est_net_ret_pct <= 0.30:
-        setup_type = "HIGH_SPREAD_OR_LOW_NET_EDGE_WAIT"
+    # Deteksi Jam Sepi BEI (Cegah posisi gantung / Time Exit akibat likuiditas mengering)
+    wib_now = datetime.now(pytz.timezone("Asia/Jakarta"))
+    hour_float = wib_now.hour + wib_now.minute / 60.0
+    is_midday_lull = 11.25 <= hour_float <= 13.75
+
+    # Tentukan Setup Type & Direction secara objektif (Diperketat untuk melindungi modal riil)
+    if is_downtrend and max_vol_surge < 1.80:
+        # Saham downtrend tanpa akumulasi volume masif: Wajib AVOID agar tidak nyangkut
+        setup_type = "DOWNTREND_FALLING_KNIFE_AVOID"
+        direction = "AVOID"
+    elif is_big_bank and cmf_val < -0.05:
+        # Bank jumbo sedang diguyur asing: Wajib AVOID (Cegah kerugian berulang di BBRI/BMRI)
+        setup_type = "INSTITUTIONAL_BANK_OUTFLOW_AVOID"
+        direction = "AVOID"
+    elif spread_pct > 0.70 or atr_pct > 5.5:
+        # Volatilitas liar / spread lebar (seperti BREN): WAIT
+        setup_type = "HIGH_SPREAD_OR_EXTREME_VOLATILITY_WAIT"
         direction = "WAIT"
-    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.2:
+    elif est_net_ret_pct < 1.20:
+        setup_type = "LOW_NET_EDGE_WAIT"
+        direction = "WAIT"
+    elif is_midday_lull and max_vol_surge < 1.60:
+        setup_type = "MIDDAY_LULL_WAIT"
+        direction = "WAIT"
+        opposing_ev.append("Sesi Istirahat/Sepi (11:15 - 13:45 WIB): Tahan beli agar tidak gantung dan kena Time Exit.")
+    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.25 and cmf_val >= -0.02:
         setup_type = "VWAP_BREAKOUT_UPTREND"
-        direction = "BUY" if score >= 62 else "WAIT"
-    elif current_price >= intra_vwap and rsi_d < 45:
+        direction = "BUY" if score >= 68 else "WAIT"
+    elif current_price >= intra_vwap and rsi_d < 45 and not is_downtrend and cmf_val >= 0.0:
         setup_type = "OVERSOLD_VWAP_RECLAIM"
-        direction = "BUY" if score >= 60 else "WAIT"
-    elif current_price >= intra_vwap and score >= 62:
+        direction = "BUY" if score >= 66 and max_vol_surge >= 1.15 else "WAIT"
+    elif current_price >= intra_vwap and score >= 75 and max_vol_surge >= 1.50 and current_price > ema20_d and cmf_val >= 0.0:
+        # Hanya boleh BUY jika ada volume spike kuat & tren harian aman di atas EMA20 & CMF positif
         setup_type = "INTRADAY_VWAP_SUPPORT"
         direction = "BUY"
+    elif current_price >= intra_vwap and score >= 58:
+        # Hover di atas VWAP tanpa volume konfirmasi: WAIT demi keamanan (hindari drawdown)
+        setup_type = "INTRADAY_VWAP_SUPPORT_WAIT"
+        direction = "WAIT"
     elif score < 45:
         setup_type = "BEARISH_BELOW_VWAP"
         direction = "AVOID"
     else:
         setup_type = "CONSOLIDATION_WAIT"
         direction = "WAIT"
+
+    # Dynamic Position Sizing (FinRL / Kelly Criterion style)
+    max_lots = max(1, config.STOCKBIT_MAX_LOT)
+    if is_downtrend or spread_pct > 0.45 or atr_pct > 4.5 or is_midday_lull or cmf_val < 0.0:
+        recommended_lots = 1
+    elif direction == "BUY" and score >= 76 and cmf_val >= 0.05:
+        recommended_lots = max_lots
+    else:
+        recommended_lots = max(1, max_lots // 2)
+
+    trailing_plan = f"Jika gain >= +1.5%, naikkan SL ke Rp {round_idx_tick(entry_high * 1.005, is_idx):,.0f} (BEP +0.5%)"
 
     tech_facts = [
         f"Harga terakhir={round_idx_tick(current_price, is_idx):.0f} pada {last_bar_str} ({change_pct:+.2f}%)",
@@ -582,6 +689,10 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         estimated_net_return_pct=est_net_ret_pct,
         data_is_valid=True,
         validation_notes="Valid OHLCV Daily + 15m Intraday snapshot",
+        cmf_20=cmf_val,
+        foreign_flow_status=foreign_flow_status,
+        recommended_lots=recommended_lots,
+        trailing_stop_plan=trailing_plan,
     )
 
 

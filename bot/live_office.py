@@ -104,16 +104,16 @@ def get_live_office_data():
         },
         {
             "id": "AI_3",
-            "name": "AI-3 Nemotron 550B Bandar",
+            "name": "AI-3 Gemini 3.8 Reasoning & Flow",
             "role": "Smart Money & Flow Tracer",
-            "model": "NVIDIA Nemotron 550B",
+            "model": "Google Gemini 3.8 Flash",
             "color": "#10b981",
             "hex": 0x10b981,
             "pos": [4.5, 0, 5],
             "status": "WORKING",
             "capacity": 85,
-            "current_task": "Melacak jejak akumulasi bandar & broker flow",
-            "speech": "Terdeteksi akumulasi konsisten dari broker asing dan institusi.",
+            "current_task": "Melacak jejak akumulasi bandar, volume spike & flow",
+            "speech": "Menganalisis akumulasi bandar & kekuatan aliran dana terkini.",
             "total_tasks": 0,
             "desk_type": "standard",
             "hair_color": 0x18181b,
@@ -207,6 +207,13 @@ def get_live_office_data():
             """)
             vote_counts = {r["slot_id"]: (r["cnt"], r["last_seen"]) for r in cur.fetchall()}
 
+            # Ambil konfigurasi model aktif terbaru dari ai_panel_registry (agar hot-swap otomatis tercermin)
+            try:
+                cur.execute("SELECT slot_id, ai_name, provider, model_id FROM ai_panel_registry WHERE is_active = 1")
+                panel_registry = {r["slot_id"]: r for r in cur.fetchall()}
+            except Exception:
+                panel_registry = {}
+
             # Ambil suara/reasoning terakhir per AI
             cur.execute("""
                 SELECT v.*, a.direction as final_dir
@@ -264,6 +271,11 @@ def get_live_office_data():
             # Update per agen
             for ag in agents:
                 sid = ag["id"]
+                if sid in panel_registry:
+                    reg = panel_registry[sid]
+                    ag["name"] = reg["ai_name"]
+                    ag["model"] = f"{reg['provider'].title()} {reg['model_id']}"
+
                 if sid in vote_counts:
                     ag["total_tasks"] = vote_counts[sid][0]
 

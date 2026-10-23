@@ -27,6 +27,8 @@ on:
     - cron: '15 8 * * 1-5'
     # 16:15 WIB -> 09:15 UTC (Evaluasi Penutupan Pasar & Self-Learning)
     - cron: '15 9 * * 1-5'
+    # 09:30 WIB -> 02:30 UTC (Radar Berita Akhir Pekan Setiap Sabtu & Minggu Pagi)
+    - cron: '30 2 * * 0,6'
 
 permissions:
   contents: write
@@ -64,6 +66,8 @@ jobs:
             python cloud_runner.py news
           elif [ "${{ github.event.schedule }}" = "15 9 * * 1-5" ]; then
             python cloud_runner.py close
+          elif [ "${{ github.event.schedule }}" = "30 2 * * 0,6" ]; then
+            python cloud_runner.py weekend_news
           else
             python cloud_runner.py scan
           fi

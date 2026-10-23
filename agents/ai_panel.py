@@ -299,6 +299,58 @@ def _call_single_panel_ai(
     }
 
 
+def generate_bull_vs_bear_debate(snap_dict: dict[str, Any], ihsg_info: dict[str, Any]) -> dict[str, Any]:
+    """
+    Pola Debat Adversarial Banteng (Bull) vs Beruang (Bear) ala TradingAgents.
+    Memaksa 1 AI Bull mencari katalis terbaik dan 1 AI Bear mencari celah risiko terburuk
+    sebelum Chief Arthur (Hakim Ketua) membuat keputusan final.
+    """
+    ticker = snap_dict.get("ticker", "SAHAM")
+    price = float(snap_dict.get("current_price", 0.0) or 0.0)
+    vwap = float(snap_dict.get("intraday_vwap", price) or price)
+    cmf = float(snap_dict.get("cmf_20", 0.0) or 0.0)
+    vol_spike = float(snap_dict.get("intraday_vol_spike_ratio", 1.0) or 1.0)
+    daily_trend = str(snap_dict.get("daily_trend", "SIDEWAYS"))
+    ihsg_trend = str(ihsg_info.get("trend", "NEUTRAL"))
+    spread_pct = float(snap_dict.get("spread_pct", 0.0) or 0.0)
+
+    bull_points = []
+    bear_points = []
+
+    # Argumen Bull (Banteng)
+    if price >= vwap:
+        bull_points.append(f"Harga bertahan di atas VWAP (Rp {vwap:,.0f}), buyer menguasai harga rata-rata hari ini.")
+    if vol_spike >= 1.25:
+        bull_points.append(f"Lonjakan volume {vol_spike:.1f}x rata-rata membuktikan adanya akumulasi agresif.")
+    if cmf > 0.02:
+        bull_points.append(f"Chaikin Money Flow positif ({cmf:+.2f}), terdeteksi aliran dana institusi masuk.")
+    if "UPTREND" in daily_trend:
+        bull_points.append(f"Tren harian selaras ({daily_trend}), angin buritan mendukung kenaikan lanjutan.")
+    if not bull_points:
+        bull_points.append("Struktur harga berada dekat area support swing dengan potensi technical rebound.")
+
+    # Argumen Bear (Beruang)
+    if price < vwap:
+        bear_points.append(f"Harga masih di bawah VWAP (Rp {vwap:,.0f}), tekanan jual intraday masih dominan.")
+    if "DOWNTREND" in daily_trend or "BEARISH" in daily_trend:
+        bear_points.append(f"Tren harian {daily_trend}, risiko tinggi melawan arah tren besar (pisau jatuh).")
+    if cmf < -0.03:
+        bear_points.append(f"Chaikin Money Flow negatif ({cmf:+.2f}), terdeteksi guyuran/distribusi dana institusi.")
+    if spread_pct > 0.45:
+        bear_points.append(f"Spread bid-offer {spread_pct:.2f}% menggerus margin keuntungan dan rawan slippage.")
+    if "BEARISH" in ihsg_trend:
+        bear_points.append(f"Kondisi indeks pasar ({ihsg_trend}) rawan aksi guyur mendadak di sesi siang/sore.")
+    if not bear_points:
+        bear_points.append("Kenaikan harga rawan terbentur resistance harian terdekat jika volume tidak bertambah.")
+
+    return {
+        "bull_agent": "AI-1 (Bull Advocate - Momentum & Flow)",
+        "bull_arguments": bull_points[:2],
+        "bear_agent": "AI-2 (Bear Skeptic - Risk & Trap Auditor)",
+        "bear_arguments": bear_points[:2],
+    }
+
+
 def run_5_ai_panel_consensus(
     snap: TechnicalSnapshot,
     ihsg_info: dict[str, Any],
@@ -391,27 +443,39 @@ def run_5_ai_panel_consensus(
 
     works_pct = round(weighted_buy_score / max(0.01, total_weight), 1)
 
-    # Keputusan Chief Arthur (Supreme Decider)
-    if buy_count >= 4 and works_pct >= 60.0 and not has_degraded:
+    # Deteksi suara dari AI unggulan berakurasi tinggi (AI_6 & AI_5) untuk Veto Defense
+    ai6_vote = next((v for v in votes if v.get("slot_id") == "AI_6"), None)
+    ai5_vote = next((v for v in votes if v.get("slot_id") == "AI_5"), None)
+    ai6_veto = (ai6_vote is not None and ai6_vote.get("vote_direction") == "WAIT" and float(ai6_vote.get("confidence_pct", 50)) >= 55.0)
+
+    # Keputusan Chief Arthur (Supreme Decider) - Diperketat demi proteksi modal riil Bos
+    if buy_count >= 5 and works_pct >= 70.0 and not has_degraded:
         final_decision = "BUY"
-        verdict_label = f"🟢 SANGAT LAYAK BELI ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
+        verdict_label = f"🟢 SANGAT LAYAK BELI (KONSENSUS KUAT: {buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
         chief_summary = (
-            f"Mayoritas kuat ({buy_count} dari {total_ai} AI) sepakat BELI dengan tingkat keyakinan gabungan {works_pct:.1f}%. "
-            f"Peluang menang sudah menutup biaya transaksi 0,40%."
+            f"Super-mayoritas ({buy_count} dari {total_ai} AI) solid merekomendasikan BELI dengan keyakinan tinggi ({works_pct:.1f}% Works). "
+            f"Peluang menang terkonfirmasi sehat dan rasio Risk:Reward > 1:2 setelah dikurangi fee transaksi."
         )
-    elif buy_count == 3 and works_pct >= 58.0 and not has_degraded:
+    elif buy_count >= 4 and works_pct >= 65.0 and not has_degraded and not ai6_veto:
         final_decision = "BUY"
-        verdict_label = f"🟢 LAYAK BELI BERSYARAT ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
+        verdict_label = f"🟢 LAYAK BELI SELEKTIF ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
         chief_summary = (
-            f"{buy_count} dari {total_ai} AI setuju BELI ({works_pct:.1f}% Works). "
-            f"Boleh masuk cicil di area antrean bawah, jangan kejar harga pucuk."
+            f"Mayoritas kuat ({buy_count} dari {total_ai} AI) menyetujui BELI ({works_pct:.1f}% Works) tanpa penolakan dari AI_6. "
+            f"Boleh antri beli bertahap di area bawah (entry low), dilarang kejar harga pucuk."
+        )
+    elif ai6_veto and buy_count >= 4:
+        final_decision = "WAIT"
+        verdict_label = f"🔴 VETO DEFENSE AKTIF: DITAHAN AI_6 ({buy_count}/{total_ai} AI Mau Beli Tapi Ditolak)"
+        chief_summary = (
+            f"{buy_count} dari {total_ai} AI menyarankan BUY, namun AI_6 (Pattern & Reversal Master - Akurasi 83.3%) "
+            f"mengaktifkan VETO DEFENSE dan menyarankan WAIT demi mencegah jebakan false breakout/nyangkut."
         )
     else:
         final_decision = "WAIT"
         verdict_label = f"🔴 JANGAN BELI DULU / WAIT ({buy_count}/{total_ai} AI Setuju — Cuma {works_pct:.1f}% Works)"
         chief_summary = (
             f"Hanya {buy_count} dari {total_ai} AI yang berani beli (skor kelayakan cuma {works_pct:.1f}%). "
-            f"Chief Arthur memutuskan TAHAN DULU demi mengamankan modal Bos."
+            f"Chief Arthur memutuskan TAHAN DULU / WAIT demi menjaga modal Bos tetap utuh dan terhindar dari cut loss."
         )
 
     if mem_ctx and mem_ctx.get("analysis_id"):
@@ -424,6 +488,8 @@ def run_5_ai_panel_consensus(
         except Exception:
             pass
 
+    debate = generate_bull_vs_bear_debate(snap_dict, ihsg_info)
+
     return {
         "votes": votes,
         "buy_count": buy_count,
@@ -433,12 +499,13 @@ def run_5_ai_panel_consensus(
         "final_decision": final_decision,
         "verdict_label": verdict_label,
         "chief_summary": chief_summary,
+        "debate": debate,
     }
 
 
 def _get_slot_accuracy_weights(db: MemoryDatabase) -> dict[str, float]:
     """Menghitung bobot kepercayaan tiap AI berdasarkan akurasi tebakan sebelumnya (Bayesian laplace smoothing)."""
-    weights = {f"AI_{i}": 1.0 for i in range(1, 6)}
+    weights = {f"AI_{i}": 1.0 for i in range(1, 7)}
     try:
         with db.connect() as conn:
             rows = conn.execute(
@@ -463,10 +530,22 @@ def _get_slot_accuracy_weights(db: MemoryDatabase) -> dict[str, float]:
 
 
 def format_panel_consensus_section(consensus: dict[str, Any]) -> str:
-    """Memformat kotak ringkasan voting 5 AI + Keputusan Hakim Ketua untuk pesan Telegram."""
-    lines = [
-        "🗳️ *HASIL SIDANG PANEL 5 AI GRATIS (PERBANDINGAN SUARA):*",
-    ]
+    """Memformat kotak ringkasan debat Bull vs Bear + voting 6 AI + Keputusan Hakim Ketua untuk pesan Telegram."""
+    lines = []
+    deb = consensus.get("debate")
+    if deb:
+        lines.extend([
+            "⚔️ *DEBAT ADVERSARIAL: BANTENG (BULL) vs BERUANG (BEAR)*",
+            f"🐂 *{deb['bull_agent']}:*",
+        ])
+        for pt in deb.get("bull_arguments", []):
+            lines.append(f"  • {pt}")
+        lines.append(f"🐻 *{deb['bear_agent']}:*")
+        for pt in deb.get("bear_arguments", []):
+            lines.append(f"  • {pt}")
+        lines.append("")
+
+    lines.append("🗳️ *HASIL SIDANG PANEL 6 AI GRATIS (PERBANDINGAN SUARA):*")
     for v in consensus.get("votes", []):
         icon = "🟢 *BUY*" if v["vote_direction"] == "BUY" else "🔴 *WAIT*"
         lines.append(

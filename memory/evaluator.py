@@ -145,6 +145,8 @@ class OutcomeEvaluator:
         status = "PENDING"
         is_ambiguous = 0
         notes = ""
+        current_sl = stop_loss
+        trailing_locked = False
 
         total_cost_pct = fee_buy_pct + fee_sell_pct + slippage_pct
 
@@ -203,12 +205,14 @@ class OutcomeEvaluator:
                         notes = f"Opened in buy zone ({fill_price:.0f}) and rallied to {exit_price:.0f} on bar {bar_ts.isoformat()}."
                         break
             else:
-                # Already filled on a previous bar: check TP and SL on current bar
+                # Already filled on a previous bar:
+                # Check against TP and current_sl (established prior to this bar)
                 hit_tp1 = b_high >= tp1
                 hit_tp2 = b_high >= tp2
-                hit_sl = b_low <= stop_loss
+                hit_sl = b_low <= current_sl
 
-                if hit_tp1 and hit_sl:
+                if hit_tp1 and b_low <= stop_loss:
+                    # Touched BOTH TP1 and the original SL in the same candle
                     status = "AMBIGUOUS_BAR_ORDER"
                     is_ambiguous = 1
                     exit_price = fill_price
@@ -217,12 +221,6 @@ class OutcomeEvaluator:
                         f"Ambiguous bar at {bar_ts.isoformat()}: Both High ({b_high:.0f} >= TP1 {tp1:.0f}) "
                         f"and Low ({b_low:.0f} <= SL {stop_loss:.0f}) touched in the same candle."
                     )
-                    break
-                elif hit_sl:
-                    status = "RESOLVED_LOSS_SL"
-                    exit_price = stop_loss
-                    exit_ts = bar_ts
-                    notes = f"Stop Loss ({stop_loss:.0f}) triggered on bar {bar_ts.isoformat()} (Bar Low={b_low:.0f})."
                     break
                 elif hit_tp2:
                     status = "RESOLVED_WIN_TP2"
@@ -236,6 +234,31 @@ class OutcomeEvaluator:
                     exit_ts = bar_ts
                     notes = f"Take Profit 1 ({tp1:.0f}) achieved on bar {bar_ts.isoformat()} (Bar High={b_high:.0f})."
                     break
+                elif hit_sl:
+                    if trailing_locked and current_sl > fill_price:
+                        status = "RESOLVED_WIN_TRAILING_SL"
+                        exit_price = current_sl
+                        exit_ts = bar_ts
+                        notes = (
+                            f"Trailing Stop Loss ({current_sl:.0f}) mengunci profit di bar {bar_ts.isoformat()} "
+                            f"(Cuan diamankan setelah sempat naik)."
+                        )
+                    else:
+                        status = "RESOLVED_LOSS_SL"
+                        exit_price = stop_loss
+                        exit_ts = bar_ts
+                        notes = f"Stop Loss ({stop_loss:.0f}) triggered on bar {bar_ts.isoformat()} (Bar Low={b_low:.0f})."
+                    break
+
+                # Freqtrade-inspired dynamic trailing stop: update current_sl for SUBSEQUENT bars
+                gain_from_fill = ((b_high - fill_price) / fill_price) * 100.0 if fill_price > 0 else 0.0
+                if gain_from_fill >= 1.5:
+                    trailing_locked = True
+                    # Lock in modal + fee broker (BEP + 0.50%)
+                    current_sl = max(current_sl, fill_price * 1.005)
+                    if gain_from_fill >= 2.5:
+                        # Lock in +1.50% profit
+                        current_sl = max(current_sl, fill_price * 1.015)
 
         # If not resolved by TP/SL/Ambiguous yet: check if full horizon has elapsed
         if status == "PENDING":

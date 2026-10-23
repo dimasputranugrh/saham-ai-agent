@@ -157,6 +157,9 @@ def main():
             send_telegram_direct(get_weekly_ai_report())
     elif mode == "weekly_ai":
         send_telegram_direct(get_weekly_ai_report())
+    elif mode in ("weekend_news", "weekend"):
+        header = "☕ *RADAR BERITA AKHIR PEKAN (INTELIJEN HARI SENIN)* 📰\n_Bursa memang libur, tapi arus berita & katalis emiten tidak pernah tidur!_\n\n"
+        send_telegram_direct(header + generate_sectoral_news_catalyst_report())
 
 
 if __name__ == "__main__":
