@@ -6,10 +6,65 @@ import pytz
 import yfinance as yf
 
 import config
-from analyzer.technical import analyze_ticker_quant, compute_vwap
+from analyzer.technical import analyze_ticker_quant, compute_vwap, scan_watchlist_quant
 from analyzer.bandarmologi import analyze_bandarmologi_footprint
 
 WIB = pytz.timezone(config.TIMEZONE)
+
+_PICKS_CACHE = {"timestamp": 0, "data": []}
+
+
+def get_top_picks(force_refresh: bool = False) -> dict[str, Any]:
+    """
+    Memindai seluruh watchlist dan mengembalikan daftar saham yang sedang berstatus 'BUY'
+    atau memiliki skor kuantitatif tertinggi beserta status bandarmologinya.
+    """
+    import time
+    now = time.time()
+    if not force_refresh and _PICKS_CACHE["data"] and (now - _PICKS_CACHE["timestamp"] < 60):
+        return {
+            "cached": True,
+            "updated_at": datetime.fromtimestamp(_PICKS_CACHE["timestamp"], WIB).strftime("%H:%M:%S WIB"),
+            "picks": _PICKS_CACHE["data"],
+        }
+
+    watchlist = config.load_watchlist()
+    snaps = scan_watchlist_quant(watchlist)
+
+    buy_signals = [s for s in snaps if s.direction == "BUY" and s.quant_score >= 60]
+    buy_signals.sort(key=lambda x: (x.quant_score, x.reward_to_risk), reverse=True)
+
+    if buy_signals:
+        selected = buy_signals
+    else:
+        # Jika belum ada sinyal BUY murni (misal market libur/sideways),
+        # ambil top 4 kandidat dengan skor tertinggi
+        selected = snaps[:4] if snaps else []
+
+    picks = []
+    for s in selected:
+        code = s.ticker.replace(".JK", "")
+        picks.append({
+            "ticker": code,
+            "full_ticker": s.ticker,
+            "quant_score": s.quant_score,
+            "direction": s.direction,
+            "action_label": s.action_label,
+            "current_price": s.current_price,
+            "change_pct": round(s.change_pct, 2),
+            "is_buy": s.direction == "BUY" and s.quant_score >= 60,
+            "setup_type": s.setup_type,
+            "foreign_flow_status": s.foreign_flow_status,
+        })
+
+    _PICKS_CACHE["timestamp"] = now
+    _PICKS_CACHE["data"] = picks
+
+    return {
+        "cached": False,
+        "updated_at": datetime.now(WIB).strftime("%H:%M:%S WIB"),
+        "picks": picks,
+    }
 
 
 def get_candlestick_chart_data(ticker: str, timeframe: str = "15m") -> dict[str, Any]:
@@ -184,12 +239,33 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
             <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-2.5 py-1 rounded-lg font-semibold transition">Cari</button>
         </form>
 
-        <!-- Watchlist Buttons Slider -->
-        <div class="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full w-full">
-            <span class="text-[11px] text-gray-400 font-semibold uppercase shrink-0 mr-1">Watchlist:</span>
+        <!-- Watchlist Buttons Slider (Semua Watchlist) -->
+        <div class="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full w-full opacity-80 hover:opacity-100 transition">
+            <span class="text-[11px] text-gray-400 font-semibold uppercase shrink-0 mr-1">Semua:</span>
 {buttons_html}
         </div>
     </header>
+
+    <!-- Tab Saham Lagi Bagus (Picks) & Tombol Refresh -->
+    <div class="glass-panel rounded-xl p-3 mb-3 flex flex-wrap items-center justify-between gap-3 shadow-lg border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-gray-900/60 to-cyan-950/20">
+        <div class="flex items-center gap-2 overflow-x-auto py-1 max-w-full flex-1">
+            <div class="flex items-center gap-1.5 shrink-0 pr-2 border-r border-gray-800">
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span class="text-xs font-bold text-emerald-400">🔥 Saham Lagi Bagus:</span>
+            </div>
+            <div id="topPicksContainer" class="flex items-center gap-2 overflow-x-auto">
+                <span class="text-xs text-gray-500 italic py-1">Memindai rekomendasi terbaik...</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+            <button id="btnRefreshPicks" onclick="refreshTopPicks(true)" class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-md hover:shadow-emerald-500/20 transition active:scale-95 cursor-pointer">
+                <span id="refreshIcon" class="inline-block">🔄</span>
+                <span>Refresh Saham Bagus</span>
+            </button>
+            <span id="picksUpdatedTime" class="text-[10px] text-gray-400 font-mono hidden sm:inline"></span>
+        </div>
+    </div>
 
     <!-- Key Metrics & Bandarmologi Strip -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
@@ -409,6 +485,7 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
         function switchTicker(t) {{
             currentTicker = t.toUpperCase().replace('.JK', '');
             loadData();
+            loadTopPicks(false);
         }}
 
         function searchTicker() {{
@@ -422,6 +499,57 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
             }}
         }}
 
+        async function loadTopPicks(force = false) {{
+            const container = document.getElementById('topPicksContainer');
+            const refreshBtn = document.getElementById('btnRefreshPicks');
+            const refreshIcon = document.getElementById('refreshIcon');
+            const timeLabel = document.getElementById('picksUpdatedTime');
+
+            if (force && refreshIcon) refreshIcon.classList.add('animate-spin');
+            if (force && refreshBtn) refreshBtn.disabled = true;
+
+            try {{
+                const res = await fetch(`/api/picks?refresh=${{force ? '1' : '0'}}`);
+                const data = await res.json();
+                const picks = data.picks || [];
+
+                if (timeLabel && data.updated_at) {{
+                    timeLabel.textContent = `Update: ${{data.updated_at}}`;
+                }}
+
+                if (picks.length === 0) {{
+                    container.innerHTML = '<span class="text-xs text-amber-400 py-1 font-medium">⚠️ Belum ada saham berstatus BUY kuat saat ini</span>';
+                    return;
+                }}
+
+                container.innerHTML = picks.map(p => {{
+                    const isCurrent = p.ticker === currentTicker;
+                    const isBuy = p.is_buy;
+                    const badgeBg = isBuy ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-300';
+                    const activeRing = isCurrent ? 'ring-2 ring-cyan-400 shadow-md shadow-cyan-500/20 scale-105' : 'hover:border-cyan-600';
+                    const icon = isBuy ? '🟢' : '🟡';
+
+                    return `
+                        <button onclick="switchTicker('${{p.ticker}}')" class="flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-mono font-bold transition shadow-sm ${{badgeBg}} ${{activeRing}} whitespace-nowrap cursor-pointer">
+                            <span>${{icon}} ${{p.ticker}}</span>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-black/50 text-cyan-300">${{p.quant_score}} pts</span>
+                            <span class="text-[10px] ${{p.change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}}">${{p.change_pct >= 0 ? '+' : ''}}${{p.change_pct}}%</span>
+                        </button>
+                    `;
+                }}).join('');
+
+            }} catch (err) {{
+                console.error("Gagal load saham bagus:", err);
+            }} finally {{
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+                if (refreshBtn) refreshBtn.disabled = false;
+            }}
+        }}
+
+        function refreshTopPicks(force = true) {{
+            loadTopPicks(force);
+        }}
+
         function switchTimeframe(tf) {{
             currentTimeframe = tf;
             document.getElementById('tf15m').className = tf === '15m' ? 'px-2 py-0.5 rounded bg-cyan-600 text-white font-semibold' : 'px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700';
@@ -432,6 +560,7 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
         document.addEventListener('DOMContentLoaded', () => {{
             initChart();
             loadData();
+            loadTopPicks(false);
         }});
     </script>
 </body>

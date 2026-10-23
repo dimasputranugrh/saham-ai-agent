@@ -39,6 +39,30 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 pass
             return
 
+        # API Rekomendasi Saham Bagus (Picks) Real-Time
+        if self.path.startswith("/api/picks") or self.path.startswith("/api/chart/picks"):
+            try:
+                from urllib.parse import urlparse, parse_qs
+                from bot.chart_view import get_top_picks
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                force = qs.get("refresh", ["0"])[0] in {"1", "true", "yes"}
+                picks_data = get_top_picks(force_refresh=force)
+                data = json.dumps(picks_data).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(f'{{"error":"{str(e)}"}}'.encode())
+                return
+
         # API Data Candlestick & Overlays TradingView Lightweight Charts
         if self.path.startswith("/api/chart"):
             try:

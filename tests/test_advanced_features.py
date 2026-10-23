@@ -107,6 +107,27 @@ class TestAdvancedFeatures(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 html = response.read().decode()
                 self.assertIn("TradingView", html)
+                self.assertIn("Saham Lagi Bagus", html)
+
+    @patch("bot.chart_view.get_top_picks")
+    def test_http_api_picks_endpoint(self, mock_get_picks):
+        """Uji endpoint HTTP /api/picks untuk mengambil daftar saham yang lagi bagus."""
+        mock_get_picks.return_value = {
+            "cached": False,
+            "updated_at": "21:20:00 WIB",
+            "picks": [
+                {"ticker": "BBCA", "quant_score": 82, "direction": "BUY", "is_buy": True, "change_pct": 1.5},
+                {"ticker": "TLKM", "quant_score": 74, "direction": "BUY", "is_buy": True, "change_pct": 0.8},
+            ]
+        }
+        url = f"http://127.0.0.1:{self.port}/api/picks?refresh=1"
+        with urllib.request.urlopen(url, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            data = json.loads(response.read().decode())
+            self.assertIn("picks", data)
+            self.assertEqual(len(data["picks"]), 2)
+            self.assertEqual(data["picks"][0]["ticker"], "BBCA")
+            self.assertTrue(data["picks"][0]["is_buy"])
 
     def test_job_queue_day_indices(self):
         """Pastikan semua tuple days pada telegram JobQueue berada dalam rentang valid 0..6 (Sun..Sat)."""
