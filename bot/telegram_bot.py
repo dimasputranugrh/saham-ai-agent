@@ -2,13 +2,14 @@ import asyncio
 import datetime as dt
 import logging
 import pytz
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
 )
 
@@ -37,18 +38,43 @@ logging.basicConfig(
 logger = logging.getLogger("SahamAIBot")
 
 
-async def _send_safe_markdown(message_or_bot, text: str, chat_id: int | str | None = None):
+async def _send_safe_markdown(message_or_bot, text: str, chat_id: int | str | None = None, reply_markup=None):
     """Mengirim pesan Telegram dengan fallback plain text jika ada karakter Markdown yang bentrok."""
+    kwargs = {"reply_markup": reply_markup} if reply_markup else {}
     try:
         if chat_id is not None:
-            await message_or_bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN)
+            await message_or_bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, **kwargs)
         else:
-            await message_or_bot.reply_text(text=text, parse_mode=ParseMode.MARKDOWN)
+            await message_or_bot.reply_text(text=text, parse_mode=ParseMode.MARKDOWN, **kwargs)
     except Exception:
         if chat_id is not None:
-            await message_or_bot.send_message(chat_id=chat_id, text=text)
+            await message_or_bot.send_message(chat_id=chat_id, text=text, **kwargs)
         else:
-            await message_or_bot.reply_text(text=text)
+            await message_or_bot.reply_text(text=text, **kwargs)
+
+
+def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Membuat Inline Keyboard interaktif dengan WebApp dan quick action buttons."""
+    web_url = "https://saham-ai-agent.onrender.com/chart"
+    keyboard = [
+        [
+            InlineKeyboardButton("📈 Buka Chart TradingView", web_app=WebAppInfo(url=web_url)),
+            InlineKeyboardButton("🏢 Kantor AI Live", url="https://saham-ai-agent.onrender.com/live"),
+        ],
+        [
+            InlineKeyboardButton("📡 Scan Pasar", callback_data="btn_scan"),
+            InlineKeyboardButton("📰 Radar Berita", callback_data="btn_berita"),
+        ],
+        [
+            InlineKeyboardButton("💼 Portofolio", callback_data="btn_pegang"),
+            InlineKeyboardButton("☀️ Rapat DSU", callback_data="btn_dsu"),
+        ],
+        [
+            InlineKeyboardButton("📊 Rapor AI", callback_data="btn_rapor"),
+            InlineKeyboardButton("🎯 Evaluasi Akurasi", callback_data="btn_evaluasi"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
 def _auto_register_chat_id(chat_id: int | str) -> bool:
@@ -103,7 +129,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/help` atau `/menu` — Tampilkan daftar perintah ini kapan saja\n\n"
         "💬 _Atau langsung ketik pertanyaan biasa tanpa garis miring `/`, nanti Tim AI langsung menjawab!_"
     )
-    await _send_safe_markdown(update.message, welcome)
+    await _send_safe_markdown(update.message, welcome, reply_markup=get_main_menu_keyboard())
 
 
 async def cmd_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -114,9 +140,11 @@ async def cmd_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Bos bisa memantau rekap harga, target TP/SL, dan sinyal 5 AI secara real-time lewat browser di link berikut:\n\n"
         "🌐 *Link Dashboard:*\n"
         "https://saham-ai-agent.onrender.com/\n\n"
+        "📈 *TradingView Chart WebApp:*\n"
+        "https://saham-ai-agent.onrender.com/chart\n\n"
         "✨ _Tampilan ramah HP, auto-refresh tiap 60 detik, dan bisa dibuka dari mana saja!_"
     )
-    await _send_safe_markdown(update.message, msg)
+    await _send_safe_markdown(update.message, msg, reply_markup=get_main_menu_keyboard())
 
 
 async def cmd_dsu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -446,6 +474,38 @@ async def handle_free_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_safe_markdown(update.message, reply)
 
 
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menangani klik tombol interaktif pada Inline Keyboard Telegram."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "btn_scan":
+        wait_msg = await query.message.reply_text("📡 *Memindai pergerakan harga & lonjakan volume intraday di watchlist...*", parse_mode=ParseMode.MARKDOWN)
+        _, report = await asyncio.to_thread(generate_intraday_scanner_alert, 0)
+        await wait_msg.delete()
+        await _send_safe_markdown(query.message, report)
+    elif data == "btn_berita":
+        wait_msg = await query.message.reply_text("📰 *Bastian sedang mengompilasi intelijen 7 sektor & pergerakan komoditas dunia...*", parse_mode=ParseMode.MARKDOWN)
+        report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
+        await wait_msg.delete()
+        await _send_safe_markdown(query.message, report)
+    elif data == "btn_pegang":
+        report = await asyncio.to_thread(evaluate_portfolio_sell_signals, True)
+        await _send_safe_markdown(query.message, report)
+    elif data == "btn_dsu":
+        wait_msg = await query.message.reply_text("⏳ *Memanggil Bastian, Serena, Damian, dan Chief Arthur untuk rapat DSU...*", parse_mode=ParseMode.MARKDOWN)
+        report = await asyncio.to_thread(generate_morning_dsu_report)
+        await wait_msg.delete()
+        await _send_safe_markdown(query.message, report)
+    elif data == "btn_rapor":
+        report = await asyncio.to_thread(get_weekly_ai_report)
+        await _send_safe_markdown(query.message, report)
+    elif data == "btn_evaluasi":
+        report = await asyncio.to_thread(get_performance_dashboard_report)
+        await _send_safe_markdown(query.message, report)
+
+
 # =====================================================================
 # JADWAL OTOMATIS HARIAN (SENIN - JUMAT WIB)
 # =====================================================================
@@ -563,6 +623,7 @@ def start_telegram_bot():
     app.add_handler(CommandHandler("upgrade", cmd_upgrade))
     app.add_handler(CommandHandler("memori", cmd_memori))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
+    app.add_handler(CallbackQueryHandler(handle_callback_query))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_free_chat))
 
     # Atur Jadwal Kerja Otomatis Karyawan AI (Senin - Jumat, Zona Waktu WIB)

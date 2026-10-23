@@ -22,6 +22,48 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"status":"ok","service":"saham-ai-agent"}')
             return
 
+        # Real-time API & SSE Stream
+        if self.path == "/api/live/stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            try:
+                from bot.live_office import get_live_office_data
+                data = json.dumps(get_live_office_data())
+                self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
+                self.wfile.flush()
+            except Exception:
+                pass
+            return
+
+        # API Data Candlestick & Overlays TradingView Lightweight Charts
+        if self.path.startswith("/api/chart"):
+            try:
+                from urllib.parse import urlparse, parse_qs
+                from bot.chart_view import get_candlestick_chart_data
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                ticker = qs.get("ticker", ["BBCA"])[0]
+                tf = qs.get("timeframe", ["15m"])[0]
+                chart_data = get_candlestick_chart_data(ticker, tf)
+                data = json.dumps(chart_data).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(f'{{"error":"{str(e)}"}}'.encode())
+                return
+
         # Real-time API Virtual Office Karyawan AI
         if self.path.startswith("/api/live") or self.path.startswith("/api/office"):
             try:
@@ -73,6 +115,28 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-type", "application/json")
                 self.end_headers()
                 self.wfile.write(f'{{"status":"error","page":"live","error":"{str(e)}"}}'.encode())
+                return
+
+        # Halaman Terminal TradingView AI (/chart atau /twa)
+        if self.path.startswith("/chart") or self.path.startswith("/twa"):
+            try:
+                from urllib.parse import urlparse, parse_qs
+                from bot.chart_view import render_tradingview_chart_html
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                ticker = qs.get("ticker", ["BBCA"])[0]
+                html_content = render_tradingview_chart_html(ticker).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(html_content)))
+                self.end_headers()
+                self.wfile.write(html_content)
+                return
+            except Exception as e:
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(f'{{"status":"error","page":"chart","error":"{str(e)}"}}'.encode())
                 return
 
         # Render Web Dashboard Monitoring & Rekap Saham Utama (Root /)

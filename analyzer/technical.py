@@ -197,6 +197,7 @@ class TechnicalSnapshot:
     foreign_flow_status: str = "NETRAL"
     recommended_lots: int = 1
     trailing_stop_plan: str = "Aktif jika gain >= +1.5% (kunci modal BEP +0.5%)"
+    bandarmologi_summary: str = "Netral"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -576,6 +577,18 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
 
     trailing_plan = f"Jika gain >= +1.5%, naikkan SL ke Rp {round_idx_tick(entry_high * 1.005, is_idx):,.0f} (BEP +0.5%)"
 
+    # Evaluasi Bandarmologi & Aliran Broker BEI
+    try:
+        from analyzer.bandarmologi import analyze_bandarmologi_footprint
+        bnd = analyze_bandarmologi_footprint(ticker, df_daily, cmf_val, max_vol_surge)
+        bandar_summary = bnd.get("summary", "Aliran dana berimbang.")
+        if "AKUMULASI" in bnd.get("status", ""):
+            signals.append(f"Bandarmologi: {bnd['status']}")
+        elif "DISTRIBUSI" in bnd.get("status", ""):
+            opposing_ev.append(f"Bandarmologi: {bnd['status']}")
+    except Exception:
+        bandar_summary = "Aliran dana broker terpantau berimbang."
+
     tech_facts = [
         f"Harga terakhir={round_idx_tick(current_price, is_idx):.0f} pada {last_bar_str} ({change_pct:+.2f}%)",
         f"VWAP 15m={round_idx_tick(intra_vwap, is_idx):.0f}, EMA9 15m={round_idx_tick(intra_ema9, is_idx):.0f}, EMA21 15m={round_idx_tick(intra_ema21, is_idx):.0f}",
@@ -693,6 +706,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         foreign_flow_status=foreign_flow_status,
         recommended_lots=recommended_lots,
         trailing_stop_plan=trailing_plan,
+        bandarmologi_summary=bandar_summary,
     )
 
 
