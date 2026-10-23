@@ -112,6 +112,13 @@ def get_candlestick_chart_data(ticker: str, timeframe: str = "15m") -> dict[str,
 def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
     """Menghasilkan halaman web interaktif lengkap dengan TradingView Lightweight Charts & integrasi TWA."""
     clean_t = default_ticker.upper().replace(".JK", "")
+    watchlist = [t.replace(".JK", "") for t in config.load_watchlist()]
+    if clean_t not in watchlist:
+        watchlist.insert(0, clean_t)
+    buttons_html = "\n".join([
+        f'            <button onclick="switchTicker(\'{t}\')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition whitespace-nowrap">{t}</button>'
+        for t in watchlist
+    ])
 
     return f"""<!DOCTYPE html>
 <html lang="id" class="dark">
@@ -171,15 +178,16 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
             </span>
         </div>
 
-        <!-- Quick Watchlist Buttons -->
-        <div class="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full">
-            <button onclick="switchTicker('BBCA')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">BBCA</button>
-            <button onclick="switchTicker('BBRI')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">BBRI</button>
-            <button onclick="switchTicker('BMRI')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">BMRI</button>
-            <button onclick="switchTicker('TLKM')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">TLKM</button>
-            <button onclick="switchTicker('ASII')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">ASII</button>
-            <button onclick="switchTicker('ANTM')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">ANTM</button>
-            <button onclick="switchTicker('GOTO')" class="t-btn px-2.5 py-1 text-xs rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 font-mono transition">GOTO</button>
+        <!-- Search Bar Input Emiten Bebas -->
+        <form onsubmit="event.preventDefault(); searchTicker();" class="flex items-center gap-1.5">
+            <input type="text" id="tickerSearchInput" placeholder="Ketik kode (cth: BRMS)..." class="bg-gray-900 border border-gray-700 text-gray-200 text-xs px-2.5 py-1 rounded-lg uppercase font-mono focus:outline-none focus:border-cyan-500 w-32 sm:w-44 placeholder-gray-500" />
+            <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-2.5 py-1 rounded-lg font-semibold transition">Cari</button>
+        </form>
+
+        <!-- Watchlist Buttons Slider -->
+        <div class="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full w-full">
+            <span class="text-[11px] text-gray-400 font-semibold uppercase shrink-0 mr-1">Watchlist:</span>
+{buttons_html}
         </div>
     </header>
 
@@ -355,7 +363,17 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
 
                 // Update Top Strips
                 document.getElementById('headerTickerBadge').textContent = data.ticker;
-                document.getElementById('metricVonis').textContent = lvl.action_label || 'WAIT & SEE';
+                const vonisEl = document.getElementById('metricVonis');
+                const vonisText = lvl.action_label || 'WAIT & SEE';
+                vonisEl.textContent = vonisText;
+                if (vonisText.includes('BUY')) {{
+                    vonisEl.className = 'text-xs sm:text-sm font-bold text-emerald-400 mt-0.5 truncate';
+                }} else if (vonisText.includes('AVOID') || vonisText.includes('CUT') || vonisText.includes('DOWNTREND')) {{
+                    vonisEl.className = 'text-xs sm:text-sm font-bold text-red-400 mt-0.5 truncate';
+                }} else {{
+                    vonisEl.className = 'text-xs sm:text-sm font-bold text-amber-400 mt-0.5 truncate';
+                }}
+
                 document.getElementById('metricCMF').textContent = lvl.cmf_20 !== undefined ? `${{lvl.cmf_20 > 0 ? '+' : ''}}${{lvl.cmf_20}}` : '-';
                 document.getElementById('metricTrailing').textContent = lvl.trailing_stop_plan || 'Lock BEP (+0.5%)';
 
@@ -389,8 +407,19 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
         }}
 
         function switchTicker(t) {{
-            currentTicker = t;
+            currentTicker = t.toUpperCase().replace('.JK', '');
             loadData();
+        }}
+
+        function searchTicker() {{
+            const input = document.getElementById('tickerSearchInput');
+            if (input && input.value) {{
+                const val = input.value.trim().toUpperCase().replace('.JK', '');
+                if (val) {{
+                    switchTicker(val);
+                    input.value = '';
+                }}
+            }}
         }}
 
         function switchTimeframe(tf) {{
