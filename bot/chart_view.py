@@ -231,6 +231,9 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
             <span id="headerTickerBadge" class="text-xs px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 font-mono font-bold">
                 {clean_t}
             </span>
+            <button onclick="buyCurrentDemoStock()" id="btnBuyDemoHeader" class="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-md active:scale-95 cursor-pointer ml-1">
+                <span>🛒 Beli Demo (10 Lot)</span>
+            </button>
         </div>
 
         <!-- Search Bar Input Emiten Bebas -->
@@ -555,6 +558,22 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
             document.getElementById('tf15m').className = tf === '15m' ? 'px-2 py-0.5 rounded bg-cyan-600 text-white font-semibold' : 'px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700';
             document.getElementById('tf1d').className = tf === '1d' ? 'px-2 py-0.5 rounded bg-cyan-600 text-white font-semibold' : 'px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700';
             loadData();
+        }}
+
+        async function buyCurrentDemoStock() {{
+            const btn = document.getElementById('btnBuyDemoHeader');
+            if (btn) btn.innerHTML = '⏳ Membeli...';
+            try {{
+                const res = await fetch(`/api/portfolio/buy-demo?ticker=${{currentTicker}}&lots=10`);
+                const data = await res.json();
+                if (data.status === 'ok') {{
+                    alert(`✅ BERHASIL BELI DEMO ${{data.ticker}} (10 Lot @ Rp ${{Number(data.price).toLocaleString()}})!\n\n🎯 Damian & Chief Arthur otomatis mengawal:\n• Target TP1: Rp ${{Number(data.tp1).toLocaleString()}}\n• Target TP2: Rp ${{Number(data.tp2).toLocaleString()}}\n• Rem Cut Loss: Rp ${{Number(data.sl).toLocaleString()}}\n\nNotifikasi akan dikirim ke Telegram saat target tercapai!`);
+                }}
+            }} catch (e) {{
+                alert('Gagal mencatat beli demo');
+            }} finally {{
+                if (btn) btn.innerHTML = '🛒 Beli Demo (10 Lot)';
+            }}
         }}
 
         document.addEventListener('DOMContentLoaded', () => {{

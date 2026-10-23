@@ -10,7 +10,7 @@ from http.server import HTTPServer
 import main
 from analyzer.bandarmologi import analyze_bandarmologi_footprint
 from bot.chart_view import render_tradingview_chart_html
-from bot.telegram_bot import get_main_menu_keyboard
+from bot.telegram_bot import get_main_menu_keyboard, get_scan_keyboard, get_portfolio_keyboard
 
 
 class TestAdvancedFeatures(unittest.TestCase):
@@ -145,6 +145,42 @@ class TestAdvancedFeatures(unittest.TestCase):
             indices = [int(x.strip()) for x in dt_str.split(",") if x.strip()]
             for idx in indices:
                 self.assertTrue(0 <= idx < 7, f"Index hari {idx} di luar rentang JobQueue (0..6)")
+
+    def test_1click_keyboards(self):
+        """Uji tombol 1-Click Beli Demo dan Portofolio keyboard."""
+        from unittest.mock import MagicMock
+        snap = MagicMock()
+        snap.ticker = "BBCA.JK"
+        snap.current_price = 5025.0
+        snap.take_profit_1 = 5350.0
+        snap.take_profit_2 = 5650.0
+        snap.stop_loss = 4760.0
+
+        kb = get_scan_keyboard([snap])
+        self.assertIsNotNone(kb)
+        flat = [b for row in kb.inline_keyboard for b in row]
+        buy_btn = next((b for b in flat if "buy_demo_BBCA" in (b.callback_data or "")), None)
+        self.assertIsNotNone(buy_btn)
+
+    @patch("analyzer.technical.analyze_ticker_quant")
+    def test_http_api_buy_demo(self, mock_quant):
+        """Uji endpoint API /api/portfolio/buy-demo."""
+        from unittest.mock import MagicMock
+        snap = MagicMock()
+        snap.ticker = "BBCA.JK"
+        snap.current_price = 5025.0
+        snap.take_profit_1 = 5350.0
+        snap.take_profit_2 = 5650.0
+        snap.stop_loss = 4760.0
+        mock_quant.return_value = snap
+
+        url = f"http://127.0.0.1:{self.port}/api/portfolio/buy-demo?ticker=BBCA&lots=10"
+        with urllib.request.urlopen(url, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            data = json.loads(response.read().decode())
+            self.assertEqual(data["status"], "ok")
+            self.assertEqual(data["ticker"], "BBCA")
+            self.assertEqual(data["lots"], 10)
 
 
 if __name__ == "__main__":

@@ -77,6 +77,38 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_scan_keyboard(qualified_list) -> InlineKeyboardMarkup | None:
+    """Membuat tombol 1-Click Beli Demo dan Buka Chart untuk saham rekomendasi scanner."""
+    if not qualified_list:
+        return None
+    rows = []
+    for s in qualified_list[:3]:
+        code = s.ticker.replace(".JK", "")
+        p = int(round(s.current_price))
+        rows.append([
+            InlineKeyboardButton(f"🛒 Beli Demo {code} (10 Lot)", callback_data=f"buy_demo_{code}_{p}_10"),
+            InlineKeyboardButton(f"📈 Chart {code}", web_app=WebAppInfo(url=f"https://saham-ai-agent.onrender.com/chart?ticker={code}")),
+        ])
+    rows.append([InlineKeyboardButton("💼 Cek Portofolio Saya", callback_data="btn_pegang")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_portfolio_keyboard() -> InlineKeyboardMarkup | None:
+    """Membuat tombol aksi cepat jual dan chart untuk saham yang sedang dipegang."""
+    portfolio = config.load_portfolio()
+    if not portfolio:
+        return None
+    rows = []
+    for norm in portfolio:
+        code = norm.replace(".JK", "")
+        rows.append([
+            InlineKeyboardButton(f"💰 Jual {code}", callback_data=f"sell_demo_{code}"),
+            InlineKeyboardButton(f"📈 Chart {code}", web_app=WebAppInfo(url=f"https://saham-ai-agent.onrender.com/chart?ticker={code}")),
+        ])
+    rows.append([InlineKeyboardButton("🔄 Refresh Portofolio", callback_data="btn_pegang")])
+    return InlineKeyboardMarkup(rows)
+
+
 def _auto_register_chat_id(chat_id: int | str) -> bool:
     """Otomatis menyimpan TELEGRAM_CHAT_ID ke memori dan file .env saat Bos pertama kali chat."""
     str_id = str(chat_id)
@@ -162,9 +194,10 @@ async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📡 *Memindai pergerakan harga & lonjakan volume intraday di watchlist...*",
         parse_mode=ParseMode.MARKDOWN,
     )
-    _, report = await asyncio.to_thread(generate_intraday_scanner_alert, 0)
+    qualified, report = await asyncio.to_thread(generate_intraday_scanner_alert, 0)
     await wait_msg.delete()
-    await _send_safe_markdown(update.message, report)
+    reply_markup = get_scan_keyboard(qualified)
+    await _send_safe_markdown(update.message, report, reply_markup=reply_markup)
 
 
 async def cmd_cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -181,7 +214,20 @@ async def cmd_cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     report = await asyncio.to_thread(analyze_single_stock_with_team, ticker)
     await wait_msg.delete()
-    await _send_safe_markdown(update.message, report)
+
+    clean_code = ticker.upper().replace(".JK", "")
+    snap = await asyncio.to_thread(analyze_ticker_quant, config.normalize_ticker(clean_code))
+    price_val = int(round(snap.current_price)) if snap and snap.current_price > 0 else 5000
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"🛒 Beli Demo {clean_code} (10 Lot)", callback_data=f"buy_demo_{clean_code}_{price_val}_10"),
+            InlineKeyboardButton(f"📈 Buka Chart {clean_code}", web_app=WebAppInfo(url=f"https://saham-ai-agent.onrender.com/chart?ticker={clean_code}")),
+        ],
+        [
+            InlineKeyboardButton("💼 Cek Portofolio Saya", callback_data="btn_pegang"),
+        ]
+    ])
+    await _send_safe_markdown(update.message, report, reply_markup=keyboard)
 
 
 async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -277,7 +323,8 @@ async def cmd_pegang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wait_msg = await update.message.reply_text("💼 _Mengecek harga terbaru saham yang sedang Bos pegang..._", parse_mode=ParseMode.MARKDOWN)
     report = await asyncio.to_thread(evaluate_portfolio_sell_signals, True)
     await wait_msg.delete()
-    await _send_safe_markdown(update.message, report)
+    reply_markup = get_portfolio_keyboard()
+    await _send_safe_markdown(update.message, report, reply_markup=reply_markup)
 
 
 async def cmd_jual(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -482,9 +529,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
     if data == "btn_scan":
         wait_msg = await query.message.reply_text("📡 *Memindai pergerakan harga & lonjakan volume intraday di watchlist...*", parse_mode=ParseMode.MARKDOWN)
-        _, report = await asyncio.to_thread(generate_intraday_scanner_alert, 0)
+        qualified, report = await asyncio.to_thread(generate_intraday_scanner_alert, 0)
         await wait_msg.delete()
-        await _send_safe_markdown(query.message, report)
+        reply_markup = get_scan_keyboard(qualified)
+        await _send_safe_markdown(query.message, report, reply_markup=reply_markup)
     elif data == "btn_berita":
         wait_msg = await query.message.reply_text("📰 *Bastian sedang mengompilasi intelijen 7 sektor & pergerakan komoditas dunia...*", parse_mode=ParseMode.MARKDOWN)
         report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
@@ -492,7 +540,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await _send_safe_markdown(query.message, report)
     elif data == "btn_pegang":
         report = await asyncio.to_thread(evaluate_portfolio_sell_signals, True)
-        await _send_safe_markdown(query.message, report)
+        reply_markup = get_portfolio_keyboard()
+        await _send_safe_markdown(query.message, report, reply_markup=reply_markup)
     elif data == "btn_dsu":
         wait_msg = await query.message.reply_text("⏳ *Memanggil Bastian, Serena, Damian, dan Chief Arthur untuk rapat DSU...*", parse_mode=ParseMode.MARKDOWN)
         report = await asyncio.to_thread(generate_morning_dsu_report)
@@ -504,6 +553,79 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif data == "btn_evaluasi":
         report = await asyncio.to_thread(get_performance_dashboard_report)
         await _send_safe_markdown(query.message, report)
+    elif data.startswith("buy_demo_"):
+        parts = data.split("_")
+        ticker_code = parts[2]
+        norm = config.normalize_ticker(ticker_code)
+        snap = await asyncio.to_thread(analyze_ticker_quant, norm)
+
+        price = float(parts[3]) if len(parts) > 3 and parts[3].isdigit() else (snap.current_price if snap and snap.current_price > 0 else 5000.0)
+        lots = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 10
+
+        tp1 = snap.take_profit_1 if snap and snap.take_profit_1 > price else round(price * 1.04)
+        tp2 = snap.take_profit_2 if snap and snap.take_profit_2 > tp1 else round(price * 1.08)
+        sl = snap.stop_loss if snap and snap.stop_loss < price else round(price * 0.96)
+
+        portfolio = config.load_portfolio()
+        portfolio[norm] = {
+            "buy_price": price,
+            "lots": lots,
+            "tp1": tp1,
+            "tp2": tp2,
+            "sl": sl,
+            "bought_at": dt.datetime.now(pytz.timezone(config.TIMEZONE)).strftime("%Y-%m-%d %H:%M WIB"),
+        }
+        config.save_portfolio(portfolio)
+
+        total_modal = price * lots * 100
+        code = norm.replace(".JK", "")
+        tp1_pct = ((tp1 - price) / price) * 100 if price > 0 else 0
+        tp2_pct = ((tp2 - price) / price) * 100 if price > 0 else 0
+        sl_pct = ((sl - price) / price) * 100 if price > 0 else 0
+
+        msg = (
+            f"🛒 *BERHASIL BELI DEMO OTOMATIS!* 🎉\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• 🏢 *Saham:* `{code}`\n"
+            f"• 📦 *Volume:* `{lots}` Lot ({(lots * 100):,} lembar)\n"
+            f"• 💵 *Harga Beli:* `Rp {price:,.0f}`\n"
+            f"• 💰 *Total Modal Virtual:* `Rp {total_modal:,.0f}`\n\n"
+            f"🎯 *Rencana Pengawalan Otomatis AI:*\n"
+            f"• 💰 *Target Aman 1 (TP1):* Rp {tp1:,.0f} (+{tp1_pct:.1f}%) ➡️ Jual 5 Lot\n"
+            f"• 🚀 *Target Panen 2 (TP2):* Rp {tp2:,.0f} (+{tp2_pct:.1f}%) ➡️ Jual 5 Lot\n"
+            f"• 🛑 *Rem Darurat (SL):* < Rp {sl:,.0f} ({sl_pct:.1f}%)\n\n"
+            f"🛡️ _Damian & Chief Arthur sedang mengawal ketat saham ini. Bos akan otomatis menerima alarm notifikasi di Telegram saat harganya menyentuh TP1, TP2, atau batas rem SL!_"
+        ).replace(",", ".")
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("💼 Cek Portofolio Saya", callback_data="btn_pegang"),
+                InlineKeyboardButton(f"📈 Buka Chart {code}", web_app=WebAppInfo(url=f"https://saham-ai-agent.onrender.com/chart?ticker={code}")),
+            ]
+        ])
+        await _send_safe_markdown(query.message, msg, reply_markup=keyboard)
+    elif data.startswith("sell_demo_"):
+        ticker_code = data.split("_")[2]
+        norm = config.normalize_ticker(ticker_code)
+        portfolio = config.load_portfolio()
+        if norm in portfolio:
+            item = portfolio.pop(norm)
+            config.save_portfolio(portfolio)
+            buy_p = item.get("buy_price", 0)
+            snap = await asyncio.to_thread(analyze_ticker_quant, norm)
+            curr_p = snap.current_price if snap and snap.current_price > 0 else buy_p
+            gain_pct = ((curr_p - buy_p) / buy_p * 100) if buy_p > 0 else 0
+            emoji = "🎉 CUAN" if gain_pct >= 0 else "🛑 CUT LOSS"
+            msg = (
+                f"{emoji}! Saham *{norm.replace('.JK', '')}* berhasil dijual!\n"
+                f"• Modal Beli: Rp {buy_p:,.0f}\n"
+                f"• Harga Jual: Rp {curr_p:,.0f} ({gain_pct:+.2f}%)\n\n"
+                f"Saham telah dikeluarkan dari daftar pantauan portofolio."
+            ).replace(",", ".")
+            reply_markup = get_portfolio_keyboard()
+            await _send_safe_markdown(query.message, msg, reply_markup=reply_markup)
+        else:
+            await query.message.reply_text(f"Saham {ticker_code} sudah tidak ada di portofolio.", parse_mode=ParseMode.MARKDOWN)
 
 
 # =====================================================================
@@ -528,9 +650,11 @@ async def scheduled_intraday_scan(context: ContextTypes.DEFAULT_TYPE):
     qualified, report = await asyncio.to_thread(generate_intraday_scanner_alert, config.MIN_INTRADAY_ALERT_SCORE)
     sell_alert = await asyncio.to_thread(evaluate_portfolio_sell_signals, False)
     if qualified:
-        await _send_safe_markdown(context.bot, report, chat_id=chat_id)
+        reply_markup = get_scan_keyboard(qualified)
+        await _send_safe_markdown(context.bot, report, chat_id=chat_id, reply_markup=reply_markup)
     elif sell_alert:
-        await _send_safe_markdown(context.bot, sell_alert, chat_id=chat_id)
+        reply_markup = get_portfolio_keyboard()
+        await _send_safe_markdown(context.bot, sell_alert, chat_id=chat_id, reply_markup=reply_markup)
     else:
         logger.info("Tidak ada sinyal beli baru maupun sinyal jual darurat pada jam ini.")
 

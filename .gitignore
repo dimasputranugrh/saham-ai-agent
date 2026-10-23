@@ -8,3 +8,4 @@ data/*.png
 data/*.db-shm
 data/*.db-wal
 data/backups/
+data/portfolio.json
