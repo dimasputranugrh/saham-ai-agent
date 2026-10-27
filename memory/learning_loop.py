@@ -347,6 +347,8 @@ class LearningLoopOrchestrator:
         tickers: Optional[list[str]] = None,
         timeframe: str = "15m",
         horizon_bars: int = 6,
+        period: str = "1mo",
+        full_history: bool = False,
     ) -> dict[str, Any]:
         """
         Runs a strict chronological Walk-Forward evaluation on historical intraday bars (`15m` or `5m`)
@@ -370,7 +372,7 @@ class LearningLoopOrchestrator:
             is_idx = ticker.endswith(".JK")
             try:
                 tk = yf.Ticker(ticker)
-                df = tk.history(period="1mo", interval=timeframe, auto_adjust=True)
+                df = tk.history(period=period, interval=timeframe, auto_adjust=True)
             except Exception:
                 continue
             if df is None or df.empty or len(df) < 45:
@@ -383,7 +385,7 @@ class LearningLoopOrchestrator:
                 df.index = df.index.tz_convert(WIB)
 
             # Walk forward chronologically from bar 25 to len(df) - horizon_bars - 1, stepping by horizon_bars
-            start_idx = max(25, len(df) - 65)
+            start_idx = 25 if full_history else max(25, len(df) - 65)
             end_idx = len(df) - horizon_bars - 1
             for idx in range(start_idx, end_idx, horizon_bars):
                 # STRICT CAUSAL SLICE: only bars up to `idx` (inclusive) are visible!
