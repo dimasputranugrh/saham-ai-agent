@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Pilih laporan (dsu / scan / close)'
+        description: 'Pilih laporan (dsu / scan / close / train)'
         required: true
         default: 'dsu'
 
@@ -29,6 +29,8 @@ on:
     - cron: '15 9 * * 1-5'
     # 09:30 WIB -> 02:30 UTC (Radar Berita Akhir Pekan Setiap Sabtu & Minggu Pagi)
     - cron: '30 2 * * 0,6'
+    # 08:00 WIB -> 01:00 UTC Sabtu (Latihan Walk-Forward Mingguan + Validasi Strategi)
+    - cron: '0 1 * * 6'
 
 permissions:
   contents: write
@@ -60,7 +62,7 @@ jobs:
         run: echo "open=$(python -c 'import config; print(1 if config.is_idx_trading_day() else 0)')" >> "$GITHUB_OUTPUT"
 
       - name: Jalankan Analisis, Evaluasi Memori, & Kirim ke Telegram Bos
-        if: steps.market_day.outputs.open == '1' || github.event.schedule == '30 2 * * 0,6'
+        if: steps.market_day.outputs.open == '1' || github.event.schedule == '30 2 * * 0,6' || github.event.schedule == '0 1 * * 6'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -80,6 +82,8 @@ jobs:
             python cloud_runner.py close
           elif [ "${{ github.event.schedule }}" = "30 2 * * 0,6" ]; then
             python cloud_runner.py weekend_news
+          elif [ "${{ github.event.schedule }}" = "0 1 * * 6" ]; then
+            python cloud_runner.py train
           else
             python cloud_runner.py scan
           fi

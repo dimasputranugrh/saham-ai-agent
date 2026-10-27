@@ -105,6 +105,7 @@ cd /home/dimas/projects/saham-ai-agent
 
 ### B. Menjalankan Evaluasi Hasil Prediksi & Walk-Forward Learning via CLI
 ```bash
+# 0. Latihan walk-forward otomatis juga berjalan setiap Sabtu 08:00 WIB lewat GitHub Actions (mode train)
 # 1. Jalankan Walk-Forward Backtest & Learning Loop pada data historis
 .venv/bin/python cli_demo.py walkforward
 

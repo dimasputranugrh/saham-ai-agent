@@ -222,7 +222,22 @@ def main():
     if mode in ("dsu", "scan", "close") and not config.is_idx_trading_day():
         logger.info("Hari ini bursa libur. Mode %s dilewati.", mode)
         return
-    if mode == "dsu":
+    if mode == "train":
+        result = orchestrator.run_walk_forward_backtest()
+        improvement = result.get("strategy_improvement") or {}
+        action = improvement.get("action", "NO_CHANGE")
+        version_note = improvement.get("new_version") or improvement.get("active_version") or "-"
+        report = (
+            "🧠 *LATIHAN MINGGUAN SELESAI*\n"
+            f"• Prediksi backtest baru: *{result.get('walk_forward_predictions_created', 0)}*\n"
+            f"• Outcome dievaluasi: *{result.get('walk_forward_outcomes_evaluated', 0)}*\n"
+            f"• Strategi: `{action}` (versi `{version_note}`)\n"
+        )
+        try:
+            send_telegram_direct(report)
+        except Exception:
+            logger.exception("Latihan selesai, tapi laporan Telegram gagal dikirim")
+    elif mode == "dsu":
         report = generate_morning_dsu_report()
         send_telegram_direct(report)
     elif mode == "scan":
