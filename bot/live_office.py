@@ -410,6 +410,11 @@ def render_live_office_html():
                 🔇 <span class="hidden sm:inline">Suara Kantor</span>
             </button>
 
+            <!-- Tombol Navigasi ke Chart TradingView -->
+            <a href="/chart" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition">
+                📊 <span class="hidden sm:inline">Terminal</span> Chart
+            </a>
+
             <!-- Tombol Navigasi ke Web Rekap Saham Utama -->
             <a href="/" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition">
                 📈 <span class="hidden sm:inline">Buka Rekap</span> Saham

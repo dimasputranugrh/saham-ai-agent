@@ -136,7 +136,7 @@ def render_dashboard_html():
         table_rows_html += f"""
         <tr class="border-b border-slate-800 hover:bg-slate-800/40 transition-colors stock-row" data-direction="{it['direction']}">
             <td class="py-3 px-4 font-bold text-white flex items-center gap-2">
-                <span class="text-base text-cyan-400">{it['ticker']}</span>
+                <a href="/chart?ticker={it['ticker']}" class="text-base text-cyan-400 hover:text-cyan-300 hover:underline font-bold" title="Buka Chart {it['ticker']}">{it['ticker']}</a>
                 <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">{it['sector']}</span>
             </td>
             <td class="py-3 px-4 text-center">
@@ -167,6 +167,11 @@ def render_dashboard_html():
             </td>
             <td class="py-3 px-4 text-right text-xs text-slate-400 font-mono">
                 {it['time_display']}
+            </td>
+            <td class="py-3 px-4 text-center">
+                <a href="/chart?ticker={it['ticker']}" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-400 text-xs font-semibold border border-emerald-500/30 transition inline-flex items-center gap-1 shadow-sm">
+                    📊 Chart
+                </a>
             </td>
         </tr>
         """
@@ -218,6 +223,10 @@ def render_dashboard_html():
 
             <div class="flex items-center gap-2.5 text-xs">
                 <span class="text-slate-400 font-mono hidden md:inline">Terakhir Sync: <span class="text-slate-200">{data['last_updated']}</span></span>
+                <!-- Tombol ke Halaman Terminal Chart AI (TradingView) -->
+                <a href="/chart" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all">
+                    📊 Terminal Chart AI
+                </a>
                 <!-- Tombol ke Halaman Live Virtual Office Karyawan AI -->
                 <a href="/live" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition-all">
                     🏢 Kantor AI (Live)
@@ -281,10 +290,11 @@ def render_dashboard_html():
                             <th class="py-3 px-4 text-center">RSI</th>
                             <th class="py-3 px-4 text-center w-28">% Works</th>
                             <th class="py-3 px-4 text-right">Waktu Rekap</th>
+                            <th class="py-3 px-4 text-center">Chart</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
-                        {table_rows_html if table_rows_html else '<tr><td colspan="9" class="text-center py-8 text-slate-500">Belum ada data rekap tersimpan.</td></tr>'}
+                        {table_rows_html if table_rows_html else '<tr><td colspan="10" class="text-center py-8 text-slate-500">Belum ada data rekap tersimpan.</td></tr>'}
                     </tbody>
                 </table>
             </div>
