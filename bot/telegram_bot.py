@@ -624,9 +624,17 @@ async def cmd_berita(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌍 _Membandingkan puluhan artikel berita dari 7 Sektor Utama BEI (Rokok/Cukai, Bank, Energi, Tambang, Konsumer, Properti, Telko)..._",
         parse_mode=ParseMode.MARKDOWN,
     )
-    report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
-    await wait_msg.delete()
-    await _send_safe_markdown(update.message, report)
+    try:
+        report = await asyncio.to_thread(generate_sectoral_news_catalyst_report)
+        await wait_msg.delete()
+        await _send_safe_markdown(update.message, report)
+    except Exception as e:
+        logger.exception("Gagal menghasilkan laporan radar berita: %s", e)
+        try:
+            await wait_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(f"⚠️ Maaf Bos, terjadi kendala saat memindai berita: {e}")
 
 
 @owner_only

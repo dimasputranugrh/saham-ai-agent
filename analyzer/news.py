@@ -186,11 +186,14 @@ def scan_all_sectors_news_and_catalysts(articles_per_sector: int = 6) -> list[di
             ex.submit(_fetch_rss_query, cfg["query"], "3d", articles_per_sector): (sec_key, cfg)
             for sec_key, cfg in SECTOR_CATALYST_MAP.items()
         }
-        for fut in concurrent.futures.as_completed(future_map, timeout=12):
-            sec_key, cfg = future_map[fut]
-            try:
-                articles = fut.result()
-            except Exception:
+        done, not_done = concurrent.futures.wait(future_map.keys(), timeout=18)
+        for fut, (sec_key, cfg) in future_map.items():
+            if fut in done:
+                try:
+                    articles = fut.result()
+                except Exception:
+                    articles = []
+            else:
                 articles = []
 
             # Deduplicate titles within sector
