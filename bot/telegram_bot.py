@@ -5,7 +5,7 @@ import time
 import uuid
 from functools import wraps
 import pytz
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -39,6 +39,39 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger("SahamAIBot")
+
+# Menu command bawaan Telegram. /agy sengaja tidak didaftarkan; penggantinya /tanya.
+BOT_COMMANDS = [
+    BotCommand("start", "Mulai bot & lihat status"),
+    BotCommand("menu", "Tampilkan menu & daftar perintah"),
+    BotCommand("dashboard", "Link dashboard monitoring"),
+    BotCommand("dsu", "Rapat DSU pagi"),
+    BotCommand("scan", "Scan saham intraday"),
+    BotCommand("berita", "Radar berita & katalis sektor"),
+    BotCommand("cek", "Bedah 1 saham + voting 6 AI"),
+    BotCommand("beli", "Catat saham yang sudah dibeli"),
+    BotCommand("pegang", "Cek portofolio & sinyal jual"),
+    BotCommand("jual", "Hapus saham dari portofolio"),
+    BotCommand("sb_saldo", "Cek saldo Stockbit"),
+    BotCommand("sb_beli", "Order beli via Stockbit"),
+    BotCommand("sb_jual", "Order jual via Stockbit"),
+    BotCommand("evaluasi", "Rapor akurasi & self-learning"),
+    BotCommand("rapor_ai", "Rapor performa 6 AI"),
+    BotCommand("ganti_ai", "Ganti AI yang kurang akurat"),
+    BotCommand("tanya", "Tanya AI Architect tentang project"),
+    BotCommand("upgrade", "Minta AI upgrade kode project"),
+    BotCommand("memori", "Lihat memori historis saham"),
+    BotCommand("watchlist", "Kelola daftar saham pantauan"),
+]
+
+
+async def _post_init(app: Application) -> None:
+    """Sinkronkan menu command Telegram agar /agy lama tergantikan /tanya."""
+    try:
+        await app.bot.set_my_commands(BOT_COMMANDS)
+    except Exception as e:
+        logger.warning("Gagal menyinkronkan menu command Telegram: %s", e)
+
 
 # Order live hanya dieksekusi setelah pemilik menekan tombol konfirmasi.
 _PENDING_SB_ORDERS: dict[str, tuple[float, str, str, int, float]] = {}
@@ -831,7 +864,7 @@ def start_telegram_bot():
             "TELEGRAM_BOT_TOKEN belum diisi di file .env! Silakan isi terlebih dahulu atau jalankan `cli_demo.py` untuk uji coba di terminal."
         )
 
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(_post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_start))
