@@ -22,6 +22,7 @@ ENABLE_DEMO_TRADING = os.getenv("ENABLE_DEMO_TRADING", "false").lower() == "true
 TIMEZONE = "Asia/Jakarta"
 DSU_MORNING_TIME = os.getenv("DSU_MORNING_TIME", "08:15").strip()
 MARKET_CLOSE_TIME = os.getenv("MARKET_CLOSE_TIME", "16:15").strip()
+AFTERNOON_BUY_CUTOFF_TIME = os.getenv("AFTERNOON_BUY_CUTOFF_TIME", "14:00").strip()
 MIN_INTRADAY_ALERT_SCORE = int(os.getenv("MIN_INTRADAY_ALERT_SCORE", "68"))
 
 STOCKBIT_TRADING_PIN = os.getenv("STOCKBIT_TRADING_PIN", "").strip()

@@ -2,6 +2,7 @@ import asyncio
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
@@ -541,6 +542,94 @@ class TestPersistentMemoryAndLearningSystem(unittest.TestCase):
         self.assertIsNotNone(lesson)
         self.assertEqual(lesson["resolved_trades"], 1)
         self.assertEqual(lesson["loss_count"], 1)
+
+    # 17. Test Afternoon Cutoff (14:00 WIB) & Realistic TP1 Distance
+    def test_17_afternoon_cutoff_and_realistic_tp1(self):
+        self.assertEqual(config.AFTERNOON_BUY_CUTOFF_TIME, "14:00")
+
+        # 1. Test Afternoon Cutoff blocks BUY
+        loop = LearningLoopOrchestrator(self.db)
+        from analyzer.technical import TechnicalSnapshot
+        snap = TechnicalSnapshot(
+            ticker="TLKM.JK",
+            is_idx=True,
+            timestamp_wib="2026-10-28 14:15 WIB",
+            last_bar_time="2026-10-28 14:15",
+            current_price=3000.0,
+            prev_close=2980.0,
+            change_pct=0.67,
+            day_high=3020.0,
+            day_low=2970.0,
+            intraday_vwap=2990.0,
+            intraday_ema9=2995.0,
+            intraday_ema21=2990.0,
+            intraday_rsi=55.0,
+            intraday_macd_hist=0.5,
+            intraday_vol_spike_ratio=1.5,
+            intraday_status="BULLISH",
+            daily_ema20=2950.0,
+            daily_ema50=2900.0,
+            daily_sma200=2800.0,
+            daily_rsi=58.0,
+            daily_macd_line=10.0,
+            daily_macd_signal=8.0,
+            daily_macd_hist=2.0,
+            daily_bb_upper=3100.0,
+            daily_bb_lower=2850.0,
+            daily_atr=45.0,
+            daily_vol_ratio=1.4,
+            daily_trend="UPTREND",
+            support_1=2950.0,
+            support_2=2900.0,
+            resistance_1=3150.0,
+            resistance_2=3200.0,
+            entry_low=2990.0,
+            entry_high=3000.0,
+            take_profit_1=3060.0,
+            take_profit_2=3120.0,
+            stop_loss=2950.0,
+            reward_to_risk=1.2,
+            quant_score=80,
+            action_label="STRONG BUY",
+            best_execution_window="Sesi 2",
+            best_sell_window="Sesi 2",
+            signals_detected=["VWAP Breakout"],
+            setup_type="VWAP_BREAKOUT_UPTREND",
+            direction="BUY",
+            tick_size=10.0,
+            spread_pct=0.33,
+            last_bar_iso="2026-10-28T14:15:00+07:00",
+            volume_shares=500000.0,
+            supporting_evidence=["Good volume"],
+            opposing_evidence=[],
+            technical_facts=[],
+            interpretations=[],
+            assumptions=[],
+            invalidation_conditions="Close below SL",
+            estimated_risk_pct=1.67,
+            estimated_gross_return_pct=2.0,
+            estimated_net_return_pct=1.6,
+        )
+
+        with patch("memory.learning_loop.datetime") as mock_dt:
+            mock_dt.now.return_value = WIB.localize(datetime(2026, 10, 28, 14, 15, 0))
+            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            res = loop.analyze_and_record_with_memory(
+                ticker="TLKM.JK",
+                snap=snap,
+                timeframe="15m",
+                horizon_bars=2, # remaining bars would be enough (6 bars left at 14:15), but cutoff triggers!
+            )
+            self.assertIsNotNone(res)
+            self.assertEqual(res["final_direction"], "WAIT")
+            self.assertTrue(any("CUTOFF SORE" in ev for ev in res["opposing_evidence"]))
+
+        # 2. Test TP1 Distance is realistic (within 1.5% - 2.5% gross, not pushed to 4.6%+)
+        entry_h = snap.entry_high
+        tp1 = snap.take_profit_1
+        tp1_pct = ((tp1 - entry_h) / entry_h) * 100.0
+        self.assertGreaterEqual(tp1_pct, 1.5)
+        self.assertLessEqual(tp1_pct, 2.5)
 
 
 if __name__ == "__main__":

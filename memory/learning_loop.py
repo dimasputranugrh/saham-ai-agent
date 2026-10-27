@@ -170,6 +170,13 @@ class LearningLoopOrchestrator:
                 f"sedangkan horizon butuh {horizon_bars} bar. BUY ditahan agar tidak menjadi posisi overnight."
             )
 
+        now_hm = datetime.now(WIB).strftime("%H:%M")
+        if final_direction == "BUY" and now_hm >= config.AFTERNOON_BUY_CUTOFF_TIME:
+            final_direction = "WAIT"
+            opposing_ev.append(
+                f"CUTOFF SORE (>= {config.AFTERNOON_BUY_CUTOFF_TIME} WIB): Sesi sore terbukti memiliki expectancy negatif. BUY ditahan menjadi WAIT."
+            )
+
         # Step 4: Save Market Snapshot
         snapshot_id = self.db.save_market_snapshot(
             {
@@ -385,6 +392,9 @@ class LearningLoopOrchestrator:
                 # Only train on samples whose horizon fits inside the same IDX session.
                 if remaining_intraday_bars(cutoff_ts, timeframe, ticker) < horizon_bars:
                     continue
+                # Skip training on afternoon entries (negative expectancy bucket)
+                if cutoff_ts.strftime("%H:%M") >= config.AFTERNOON_BUY_CUTOFF_TIME:
+                    continue
                 ihsg_info = get_ihsg_regime_as_of(cutoff_ts, ihsg_daily)
                 ihsg_regime = str(ihsg_info.get("regime", "NEUTRAL"))
                 as_of = cutoff_ts.isoformat()
@@ -481,8 +491,9 @@ class LearningLoopOrchestrator:
                 if sl >= entry_low:
                     sl = round_idx_tick(entry_low - tick_sz * 2, is_idx)
                 risk_ps = max(entry_high - sl, tick_sz * 2)
-                tp1 = round_idx_tick(entry_high + 1.6 * risk_ps, is_idx)
-                tp2 = round_idx_tick(entry_high + 2.6 * risk_ps, is_idx)
+                target_r_tp1 = entry_high + 1.25 * risk_ps
+                tp1 = round_idx_tick(max(entry_high * 1.015, min(target_r_tp1, entry_high * 1.025)), is_idx)
+                tp2 = round_idx_tick(max(entry_high + 2.2 * risk_ps, entry_high * 1.035), is_idx)
 
                 est_gross = round(((tp1 - entry_high) / entry_high) * 100.0, 2)
                 est_net = round(est_gross - (config.FEE_BUY_PCT + config.FEE_SELL_PCT + config.DEFAULT_SLIPPAGE_PCT), 2)

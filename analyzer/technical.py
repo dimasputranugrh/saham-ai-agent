@@ -451,9 +451,18 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         stop_loss = round_idx_tick(entry_low * 0.985, is_idx)
 
     risk_per_share = max(entry_high - stop_loss, entry_high * 0.012)
-    min_tp1_threshold = entry_high * 1.025  # Minimal potensi cuan kotor +2.5% agar RRR sehat
-    tp1 = round_idx_tick(max(resistance_1, entry_high + 2.0 * risk_per_share, min_tp1_threshold), is_idx)
-    tp2 = round_idx_tick(max(resistance_2, entry_high + 3.2 * risk_per_share, entry_high * 1.045), is_idx)
+    # Intraday BEI realistis: target TP1 1.25R (sekitar +1.5% s/d +2.2% kotor).
+    # Jangan memaksa TP1 ke resistance_1 jika jaraknya terlalu jauh (> 2.5%).
+    target_r_tp1 = entry_high + 1.25 * risk_per_share
+    if resistance_1 > entry_high and resistance_1 <= entry_high * 1.025:
+        candidate_tp1 = min(resistance_1, target_r_tp1)
+    else:
+        candidate_tp1 = target_r_tp1
+    candidate_tp1 = max(entry_high * 1.015, min(candidate_tp1, entry_high * 1.025))
+    tp1 = round_idx_tick(candidate_tp1, is_idx)
+
+    target_r_tp2 = entry_high + 2.2 * risk_per_share
+    tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.035), is_idx)
 
     rr_ratio = round((tp1 - entry_high) / risk_per_share, 2) if risk_per_share > 0 else 2.0
 
@@ -551,7 +560,9 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     # Deteksi Jam Sepi BEI (Cegah posisi gantung / Time Exit akibat likuiditas mengering)
     wib_now = datetime.now(pytz.timezone("Asia/Jakarta"))
     hour_float = wib_now.hour + wib_now.minute / 60.0
+    now_hm = wib_now.strftime("%H:%M")
     is_midday_lull = 11.25 <= hour_float <= 13.75
+    is_afternoon_cutoff = now_hm >= config.AFTERNOON_BUY_CUTOFF_TIME
 
     # Tentukan Setup Type & Direction secara objektif (Diperketat untuk melindungi modal riil)
     if is_downtrend and max_vol_surge < 1.80:
@@ -593,6 +604,13 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     else:
         setup_type = "CONSOLIDATION_WAIT"
         direction = "WAIT"
+
+    if is_afternoon_cutoff and direction == "BUY":
+        setup_type = "AFTERNOON_CUTOFF_WAIT"
+        direction = "WAIT"
+        opposing_ev.append(
+            f"CUTOFF SORE (>= {config.AFTERNOON_BUY_CUTOFF_TIME} WIB): Sesi sore terbukti memiliki expectancy negatif; BUY ditahan menjadi WAIT."
+        )
 
     # Dynamic Position Sizing (FinRL / Kelly Criterion style)
     max_lots = max(1, config.STOCKBIT_MAX_LOT)
