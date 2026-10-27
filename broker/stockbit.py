@@ -26,6 +26,26 @@ async def _unlock_pin_if_needed(page, pin: str):
         pass
 
 
+async def _verify_order_submission(page) -> tuple[bool, str]:
+    """Cek indikator konfirmasi di DOM. Kalau tidak yakin, jangan anggap order sukses."""
+    try:
+        body = (await page.content()).lower()
+    except Exception:
+        return False, "halaman tidak bisa dibaca"
+    success_markers = (
+        "order berhasil",
+        "pesanan berhasil",
+        "order submitted",
+        "order placed",
+        "open order",
+        "antrian order",
+        "success",
+    )
+    if any(marker in body for marker in success_markers):
+        return True, "indikator sukses ditemukan"
+    return False, "indikator sukses tidak ditemukan"
+
+
 async def capture_stockbit_portfolio() -> Tuple[bool, str, Optional[Path]]:
     """
     Membuka halaman Portofolio Stockbit secara tersembunyi (Headless),
@@ -179,16 +199,29 @@ async def execute_stockbit_order(
             await asyncio.sleep(1.0)
             # Klik tombol Submit Order (Buy / Sell) dan Confirm jika muncul modal konfirmasi
             submit_btns = await page.query_selector_all(f'button:has-text("{target_btn_text}")')
-            if len(submit_btns) >= 2:
-                await submit_btns[-1].click()
-                await asyncio.sleep(1.2)
-                confirm_btn = await page.query_selector('button:has-text("Confirm"), button:has-text("Konfirmasi"), button:has-text("Proceed")')
-                if confirm_btn:
-                    await confirm_btn.click()
-                    await asyncio.sleep(1.5)
+            if len(submit_btns) < 2:
+                await page.screenshot(path=str(screenshot_path), full_page=False)
+                await context.close()
+                return False, "⚠️ Tombol submit order tidak ditemukan. Order TIDAK dikirim.", screenshot_path
 
+            await submit_btns[-1].click()
+            await asyncio.sleep(1.2)
+            confirm_btn = await page.query_selector('button:has-text("Confirm"), button:has-text("Konfirmasi"), button:has-text("Proceed")')
+            if confirm_btn:
+                await confirm_btn.click()
+                await asyncio.sleep(1.5)
+
+            verified, verify_note = await _verify_order_submission(page)
             await page.screenshot(path=str(screenshot_path), full_page=False)
             await context.close()
+
+            if config.STOCKBIT_VERIFY_ORDER and not verified:
+                return (
+                    False,
+                    f"⚠️ Order {side} {code} mungkin sudah diklik, tapi status fill belum terverifikasi ({verify_note}).\n"
+                    "Portfolio TIDAK dicatat otomatis. Cek screenshot & aplikasi Stockbit sebelum mengulang order.",
+                    screenshot_path,
+                )
 
             est_total = clean_price * lots * 100
             aksi_kata = "BELI" if side == "BUY" else "JUAL"
@@ -196,7 +229,8 @@ async def execute_stockbit_order(
                 f"✅ *EKSEKUSI STOCKBIT: {aksi_kata} {code}*\n"
                 f"• 📦 *Jumlah:* {lots} Lot ({lots * 100} lembar)\n"
                 f"• 💵 *Harga Order:* Rp {clean_price:,.0f}\n"
-                f"• 💰 *Total Nilai:* Rp {est_total:,.0f}\n\n"
+                f"• 💰 *Total Nilai:* Rp {est_total:,.0f}\n"
+                f"• 🔎 *Verifikasi:* {verify_note}\n\n"
                 f"📸 _Berikut tangkapan layar langsung dari akun Stockbit Anda:_"
             ).replace(",", ".")
             return True, caption, screenshot_path

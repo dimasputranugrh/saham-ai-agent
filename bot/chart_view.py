@@ -82,9 +82,9 @@ def get_candlestick_chart_data(ticker: str, timeframe: str = "15m") -> dict[str,
     try:
         tk = yf.Ticker(clean_ticker)
         if timeframe == "1d":
-            df = tk.history(period="6mo", interval="1d", auto_adjust=False)
+            df = tk.history(period="6mo", interval="1d", auto_adjust=True)
         else:
-            df = tk.history(period="5d", interval="15m", auto_adjust=False)
+            df = tk.history(period="5d", interval="15m", auto_adjust=True)
 
         if df is not None and not df.empty:
             df = df.dropna(subset=["Close", "High", "Low", "Open"]).copy()
@@ -564,8 +564,12 @@ def render_tradingview_chart_html(default_ticker: str = "BBCA") -> str:
             const btn = document.getElementById('btnBuyDemoHeader');
             if (btn) btn.innerHTML = '⏳ Membeli...';
             try {{
-                const res = await fetch(`/api/portfolio/buy-demo?ticker=${{currentTicker}}&lots=10`);
+                const res = await fetch(`/api/portfolio/buy-demo?ticker=${{currentTicker}}&lots=10`, {{ method: 'POST' }});
                 const data = await res.json();
+                if (!res.ok) {{
+                    alert(data.error || 'Beli demo dinonaktifkan.');
+                    return;
+                }}
                 if (data.status === 'ok') {{
                     alert(`✅ BERHASIL BELI DEMO ${{data.ticker}} (10 Lot @ Rp ${{Number(data.price).toLocaleString()}})!\n\n🎯 Damian & Chief Arthur otomatis mengawal:\n• Target TP1: Rp ${{Number(data.tp1).toLocaleString()}}\n• Target TP2: Rp ${{Number(data.tp2).toLocaleString()}}\n• Rem Cut Loss: Rp ${{Number(data.sl).toLocaleString()}}\n\nNotifikasi akan dikirim ke Telegram saat target tercapai!`);
                 }}

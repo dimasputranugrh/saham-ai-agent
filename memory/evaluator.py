@@ -136,6 +136,43 @@ class OutcomeEvaluator:
                 resolution_notes=note,
             )
 
+        # Case 1b: SELL signal (exit/short bias for an existing position).
+        # We do not model IDX shorting; this measures whether the sell call
+        # avoided a decline from the signal price to the horizon close.
+        if direction == "SELL":
+            if bars_count < horizon_bars:
+                return None
+            entry = float(analysis_row["entry_price"])
+            exit_p = actual_close
+            gross_ret = ((entry - exit_p) / entry) * 100.0
+            net_ret = gross_ret - (fee_buy_pct + fee_sell_pct + slippage_pct)
+            status = "RESOLVED_WIN_TP1" if net_ret > 0 else "RESOLVED_LOSS_SL"
+            notes = (
+                f"SELL signal at {entry:.0f} evaluated over {bars_count} bars; "
+                f"horizon close {exit_p:.0f} (gross {gross_ret:+.2f}%, net {net_ret:+.2f}%)."
+            )
+            return self._insert_outcome(
+                analysis_id=analysis_id,
+                evaluation_status=status,
+                entry_filled=1,
+                entry_fill_price=round(entry, 2),
+                entry_fill_timestamp=str(window_bars.index[0].isoformat()),
+                exit_price=round(exit_p, 2),
+                exit_timestamp=str(window_bars.index[-1].isoformat()),
+                actual_high=actual_high,
+                actual_low=actual_low,
+                actual_close=actual_close,
+                bars_evaluated=bars_count,
+                gross_return_pct=round(gross_ret, 4),
+                net_return_pct=round(net_ret, 4),
+                fee_buy_pct=fee_buy_pct,
+                fee_sell_pct=fee_sell_pct,
+                slippage_pct=slippage_pct,
+                duration_minutes=float((window_bars.index[-1] - window_bars.index[0]).total_seconds() / 60.0),
+                is_ambiguous=0,
+                resolution_notes=notes,
+            )
+
         # Case 2: BUY signal chronological bar-by-bar walk
         filled = False
         fill_price: Optional[float] = None
@@ -155,14 +192,19 @@ class OutcomeEvaluator:
             b_high = float(row["High"])
             b_low = float(row["Low"])
             b_close = float(row["Close"])
+            b_volume = float(row.get("Volume", 0) or 0)
+
+            # No trade can fill on a zero-volume/suspended bar.
+            if b_volume <= 0:
+                continue
 
             if not filled:
-                # Check if price enters the buy zone (b_low <= entry_high)
+                # Check if price enters the buy zone (b_low <= entry_high).
+                # A limit buy at entry_high fills at the open when the market gaps below it.
                 if b_low <= entry_high:
                     filled = True
                     fill_ts = bar_ts
-                    # Realistic fill price: if market opened below entry_high, fill at max(entry_low, b_open); else entry_high
-                    fill_price = max(entry_low, min(b_open, entry_high))
+                    fill_price = min(b_open, entry_high)
 
                     # Check same-bar ambiguity on the entry bar itself:
                     hit_tp_same_bar = b_high >= tp1
@@ -191,11 +233,14 @@ class OutcomeEvaluator:
                         )
                         break
                     elif hit_sl_same_bar:
-                        # Price entered at entry_high/open and dropped through stop_loss (< entry_low)
+                        # Stop-loss is a market order: gap-down fills at the open, worse than the SL level.
                         status = "RESOLVED_LOSS_SL"
-                        exit_price = stop_loss
+                        exit_price = min(stop_loss, b_open)
                         exit_ts = bar_ts
-                        notes = f"Entry filled at {fill_price:.0f} and Stop Loss ({stop_loss:.0f}) breached on bar {bar_ts.isoformat()}."
+                        notes = (
+                            f"Entry filled at {fill_price:.0f} and Stop Loss ({stop_loss:.0f}) breached on bar {bar_ts.isoformat()} "
+                            f"(gap/open fill {exit_price:.0f})."
+                        )
                         break
                     elif hit_tp_same_bar and b_open <= entry_high:
                         # Opened at/below entry_high (immediate fill at open) and rallied to TP1 without touching SL
@@ -211,7 +256,7 @@ class OutcomeEvaluator:
                 hit_tp2 = b_high >= tp2
                 hit_sl = b_low <= current_sl
 
-                if hit_tp1 and b_low <= stop_loss:
+                if hit_tp1 and b_low <= stop_loss and not trailing_locked:
                     # Touched BOTH TP1 and the original SL in the same candle
                     status = "AMBIGUOUS_BAR_ORDER"
                     is_ambiguous = 1
@@ -235,19 +280,21 @@ class OutcomeEvaluator:
                     notes = f"Take Profit 1 ({tp1:.0f}) achieved on bar {bar_ts.isoformat()} (Bar High={b_high:.0f})."
                     break
                 elif hit_sl:
-                    if trailing_locked and current_sl > fill_price:
+                    # Stop/trailing SL is a market order: a gap through the level fills at the open.
+                    gap_exit = min(current_sl, b_open)
+                    if trailing_locked and gap_exit > fill_price:
                         status = "RESOLVED_WIN_TRAILING_SL"
-                        exit_price = current_sl
+                        exit_price = gap_exit
                         exit_ts = bar_ts
                         notes = (
                             f"Trailing Stop Loss ({current_sl:.0f}) mengunci profit di bar {bar_ts.isoformat()} "
-                            f"(Cuan diamankan setelah sempat naik)."
+                            f"(fill gap/open {exit_price:.0f})."
                         )
                     else:
                         status = "RESOLVED_LOSS_SL"
-                        exit_price = stop_loss
+                        exit_price = gap_exit
                         exit_ts = bar_ts
-                        notes = f"Stop Loss ({stop_loss:.0f}) triggered on bar {bar_ts.isoformat()} (Bar Low={b_low:.0f})."
+                        notes = f"Stop Loss ({current_sl:.0f}) triggered on bar {bar_ts.isoformat()} (Bar Low={b_low:.0f}, fill {exit_price:.0f})."
                     break
 
                 # Freqtrade-inspired dynamic trailing stop: update current_sl for SUBSEQUENT bars
@@ -354,7 +401,9 @@ class OutcomeEvaluator:
         resolution_notes: str,
     ) -> dict[str, Any]:
         outcome_id = str(uuid.uuid4())
-        evaluated_at = now_wib_iso()
+        # Historical audit time must be the exit time, not wall-clock now; otherwise
+        # walk-forward steps would appear to have been learned in the future.
+        evaluated_at = str(exit_timestamp or now_wib_iso())
         with self.db.connect() as conn:
             conn.execute(
                 """
@@ -410,7 +459,10 @@ class OutcomeEvaluator:
             ).fetchone()
             res = dict(row)
 
-        if ah:
+        if ah and (
+            evaluation_status.startswith("RESOLVED_")
+            or evaluation_status == "AMBIGUOUS_BAR_ORDER"
+        ):
             try:
                 self.db.grade_ai_panel_votes_for_outcome(
                     analysis_id=analysis_id,
@@ -454,24 +506,77 @@ class OutcomeEvaluator:
             grouped.setdefault(key, []).append(d)
 
         newly_resolved: list[dict[str, Any]] = []
+        now_utc = datetime.now(WIB)
         for (ticker, timeframe), items in grouped.items():
-            period = "5d" if timeframe in ("1m", "5m") else ("1mo" if timeframe == "15m" else "6mo")
+            max_age_days = 0
+            for item in items:
+                try:
+                    cutoff = _parse_ts(str(item["bar_cutoff_timestamp"]))
+                    max_age_days = max(max_age_days, (now_utc - cutoff).days)
+                except Exception:
+                    pass
+
+            if timeframe == "1m":
+                period = "7d"
+                max_available_days = 7
+            elif timeframe in ("5m", "15m"):
+                period = "60d" if max_age_days > 20 else "1mo"
+                max_available_days = 60
+            else:
+                period = "6mo"
+                max_available_days = 180
+
             try:
                 tk = yf.Ticker(ticker)
-                df_bars = tk.history(period=period, interval=timeframe, auto_adjust=False)
+                df_bars = tk.history(period=period, interval=timeframe, auto_adjust=True)
             except Exception:
-                continue
+                df_bars = None
+
             if df_bars is None or df_bars.empty:
+                # Older than the provider's intraday window: mark once so it stops being retried forever.
+                if max_age_days > max_available_days:
+                    for item in items:
+                        newly_resolved.append(
+                            self._insert_unavailable(item, "Data intraday historis sudah di luar jendela provider.")
+                        )
                 continue
 
             for item in items:
                 res = self.evaluate_prediction_with_bars(item, df_bars)
                 if res is not None:
                     newly_resolved.append(res)
+                elif max_age_days > max_available_days:
+                    newly_resolved.append(
+                        self._insert_unavailable(item, "Tidak ada bar masa depan dalam jendela data provider.")
+                    )
 
         if newly_resolved:
             self.recompute_strategy_lessons()
         return newly_resolved
+
+    def _insert_unavailable(self, analysis_row: dict[str, Any], note: str) -> dict[str, Any]:
+        price = float(analysis_row.get("entry_price") or analysis_row.get("entry_high") or 1.0)
+        return self._insert_outcome(
+            analysis_id=str(analysis_row["analysis_id"]),
+            evaluation_status="INSUFFICIENT_DATA",
+            entry_filled=0,
+            entry_fill_price=None,
+            entry_fill_timestamp=None,
+            exit_price=None,
+            exit_timestamp=str(analysis_row.get("evaluate_after_wib") or now_wib_iso()),
+            actual_high=price,
+            actual_low=price,
+            actual_close=price,
+            bars_evaluated=0,
+            gross_return_pct=0.0,
+            net_return_pct=0.0,
+            fee_buy_pct=config.FEE_BUY_PCT,
+            fee_sell_pct=config.FEE_SELL_PCT,
+            slippage_pct=config.DEFAULT_SLIPPAGE_PCT,
+            duration_minutes=0.0,
+            is_ambiguous=0,
+            resolution_notes=note,
+        )
 
     def recompute_strategy_lessons(self) -> list[dict[str, Any]]:
         """
@@ -495,7 +600,8 @@ class OutcomeEvaluator:
                     o.entry_filled,
                     o.gross_return_pct,
                     o.net_return_pct,
-                    o.is_ambiguous
+                    o.is_ambiguous,
+                    o.evaluated_at_wib
                 FROM analysis_history a
                 INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
                 WHERE a.direction = 'BUY'
@@ -538,6 +644,8 @@ class OutcomeEvaluator:
         with self.db.connect() as conn:
             for key, items in buckets.items():
                 strat_name, strat_ver, setup_type, tf, regime, ticker_scope, exec_mode = key
+                # The lesson may only claim knowledge that existed when its latest outcome resolved.
+                lesson_evaluated_at = max((str(x.get("evaluated_at_wib") or now_iso) for x in items), default=now_iso)
                 sample_size = len(items)
                 ambiguous_count = sum(1 for x in items if x["is_ambiguous"] == 1 or x["evaluation_status"] == "AMBIGUOUS_BAR_ORDER")
                 resolved = [
@@ -697,7 +805,7 @@ class OutcomeEvaluator:
                         hypothesis,
                         interpretation,
                         val_status,
-                        now_iso,
+                        lesson_evaluated_at,
                     ),
                 )
                 lessons_saved.append(measured_facts)

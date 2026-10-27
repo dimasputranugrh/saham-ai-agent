@@ -33,6 +33,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: saham-ai-agent-db-writer
+  cancel-in-progress: false
+
 jobs:
   jalankan-karyawan-ai:
     runs-on: ubuntu-latest
@@ -48,7 +52,15 @@ jobs:
       - name: Install Library Analisis Saham & AI
         run: pip install -r requirements.txt
 
+      - name: Jalankan Test Unit (tanpa menyentuh data produksi)
+        run: python -m unittest discover -s tests -v
+
+      - name: Cek Hari Bursa (opsional lewat data/idx_holidays.json)
+        id: market_day
+        run: echo "open=$(python -c 'import config; print(1 if config.is_idx_trading_day() else 0)')" >> "$GITHUB_OUTPUT"
+
       - name: Jalankan Analisis, Evaluasi Memori, & Kirim ke Telegram Bos
+        if: steps.market_day.outputs.open == '1' || github.event.schedule == '30 2 * * 0,6'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -80,5 +92,16 @@ jobs:
           git add data/agent_memory.db data/watchlist.json || true
           if ! git diff --cached --quiet; then
             git commit -m "chore(memory): auto-update persistent agent_memory.db from cloud run"
-            git push origin HEAD:main || true
+            pushed=0
+            for attempt in 1 2 3; do
+              if git pull --rebase --autostash origin main && git push origin HEAD:main; then
+                pushed=1
+                break
+              fi
+              sleep $((attempt * 5))
+            done
+            if [ "$pushed" -ne 1 ]; then
+              echo "Gagal push DB setelah 3 percobaan; update tidak boleh hilang diam-diam."
+              exit 1
+            fi
           fi

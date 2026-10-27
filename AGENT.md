@@ -35,7 +35,7 @@ Database SQLite berjalan dalam mode WAL dengan 9 tabel terintegrasi:
 3. `prediction_outcomes`: Rekam hasil nyata setelah horizon waktu selesai (Win TP, Loss SL, Ambiguous Bar Order).
 4. `strategy_lessons`: Pelajaran statistik (Win Rate, Profit Factor, Expectancy) per setup dan rezim IHSG.
 5. `strategy_versions`: Parameter strategi aktif dan riwayat perbaikan out-of-sample / rollback.
-6. `ai_panel_registry`: Konfigurasi slot 5 AI aktif (bisa diganti lewat `/ganti_ai`).
+6. `ai_panel_registry`: Konfigurasi slot 6 AI aktif (bisa diganti lewat `/ganti_ai`).
 7. `ai_panel_votes`: Rekam suara dan akurasi masing-masing AI untuk rapor mingguan.
 8. `sector_news_investigations`: Rekam hasil investigasi perbandingan 30+ artikel berita 7 sektor BEI.
 9. `conversation_knowledge_log`: Rekam seluruh aturan dari Bos Dimas dan tanya-jawab Telegram.
@@ -59,7 +59,7 @@ File: [`analyzer/news.py`](file:///home/dimas/projects/saham-ai-agent/analyzer/n
 ## 5. Arsitektur Router Model AI Telegram vs Terminal CLI
 File: [`agents/dev_architect.py`](file:///home/dimas/projects/saham-ai-agent/agents/dev_architect.py)
 - **Di Terminal Antigravity CLI:** Bos Dimas bebas memakai **Gemini 4 Argon** atau Claude untuk ngoding berat.
-- **Di Telegram (`/agy` dan `/upgrade`):**
+- **Di Telegram (`/tanya` dan `/upgrade`):**
   - **Saat Laptop Nyala (WSL):** Dijalankan via Antigravity CLI menggunakan **Gemini 3.8 Flash** dengan *Effort Routing* otomatis:
     - Ringan $\rightarrow$ `gemini-3.8-flash-low`
     - Sedang $\rightarrow$ `gemini-3.8-flash-medium`
@@ -70,15 +70,15 @@ File: [`agents/dev_architect.py`](file:///home/dimas/projects/saham-ai-agent/age
 ---
 
 ## 6. Daftar Perintah Telegram Bot (@Agent_d_saham_bot)
-- `/cek <KODE>`: Bedah saham + Sidang Voting 5 AI (`% Works`) + Vonis Chief Arthur.
+- `/cek <KODE>`: Bedah saham + Sidang Voting 6 AI (`% Works`) + Vonis Chief Arthur.
 - `/scan`: Pindai saham yang layak dibeli jam ini.
 - `/berita` atau `/sektor`: Radar perbandingan berita 7 sektor & peluang Swing Masa Depan.
 - `/dsu`: Laporan rapat harian pagi (Bastian, Serena, Damian, Chief Arthur).
-- `/rapor_ai`: Rapor mingguan ranking akurasi 5 AI (siapa paling jago vs siapa harus diganti).
+- `/rapor_ai`: Rapor mingguan ranking akurasi 6 AI (siapa paling jago vs siapa harus diganti).
 - `/ganti_ai <SLOT> <MODEL>`: Ganti AI yang jelek dengan model gratis lain.
 - `/evaluasi`: Dashboard performa strategi, Win Rate, dan Profit Factor.
 - `/memori <KODE>`: Cek ingatan database pada saham tertentu.
-- `/agy <tanya>`: Tanya AI Architect tentang kodingan project ini.
+- `/tanya <pertanyaan>`: Tanya AI Architect tentang kodingan project ini.
 - `/upgrade <instruksi>`: Perintahkan AI mengedit kode project, auto-compile test, & push ke GitHub.
 - `/beli` & `/pegang` & `/jual`: Pantau status jam jual saham portofolio.
 - `/help` / `/menu` / `/bantuan`: Tampilkan daftar bantuan.

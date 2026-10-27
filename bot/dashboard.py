@@ -212,7 +212,7 @@ def render_dashboard_html():
                     <h1 class="text-lg font-bold text-white flex items-center gap-2">
                         Saham AI Agent <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30">● 24/7 LIVE</span>
                     </h1>
-                    <p class="text-xs text-slate-400">Monitoring & Rekap Harga Saham BEI • 5 AI Ensemble</p>
+                    <p class="text-xs text-slate-400">Monitoring & Rekap Harga Saham BEI • 6 AI Ensemble</p>
                 </div>
             </div>
 
@@ -249,7 +249,7 @@ def render_dashboard_html():
             </div>
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 shadow-sm">
                 <div class="text-xs font-medium text-cyan-400">Mode Eksekusi</div>
-                <div class="text-2xl font-bold font-mono text-cyan-400 mt-1">PAPER <span class="text-xs text-slate-500 font-sans">(Aman)</span></div>
+                <div class="text-2xl font-bold font-mono text-cyan-400 mt-1">{config.EXECUTION_MODE} <span class="text-xs text-slate-500 font-sans">({'Aman' if config.EXECUTION_MODE == 'PAPER' else 'HATI-HATI'})</span></div>
             </div>
         </div>
 
@@ -258,7 +258,7 @@ def render_dashboard_html():
             <div class="p-4 sm:p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
                     <h2 class="text-base font-bold text-white">Rekap Harga & Target Analisis Saham</h2>
-                    <p class="text-xs text-slate-400 mt-0.5">Dihitung otomatis oleh 5 AI (Google Gemini, OpenAI 120B, NVIDIA 550B, Qwen 3.8, & Quant-Bayesian)</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Dihitung otomatis oleh 6 AI panel (Gemini, OpenAI, NVIDIA, Qwen, Quant-Bayesian, Pattern Master)</p>
                 </div>
 
                 <div class="flex items-center gap-2">

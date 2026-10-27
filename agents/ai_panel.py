@@ -202,7 +202,7 @@ def _call_single_panel_ai(
     }
 
     sys_prompt = (
-        f"Anda adalah {ai_name} dalam Panel 5 Juri AI Saham Indonesia (BEI).\n"
+        f"Anda adalah {ai_name} dalam Panel 6 Juri AI Saham Indonesia (BEI).\n"
         f"Fokus tugas Anda: {role_focus}\n"
         "Evaluasi data JSON saham ini secara objektif dan independen. "
         "Balas HANYA dalam format JSON valid persis seperti ini tanpa teks tambahan:\n"
@@ -293,8 +293,9 @@ def _call_single_panel_ai(
     return {
         "slot_id": slot_id,
         "ai_name": ai_name,
-        "provider": provider,
-        "model_id": model_id,
+        "provider": "deterministic",
+        "model_id": "deterministic-v1",
+        "is_fallback": True,
         **fallback,
     }
 
@@ -359,7 +360,7 @@ def run_5_ai_panel_consensus(
     use_live_llm: bool = True,
 ) -> dict[str, Any]:
     """
-    Menjalankan 5 AI Panelis secara paralel untuk memberi masukan masing-masing,
+    Menjalankan 6 AI Panelis secara paralel untuk memberi masukan masing-masing,
     lalu dihitung skor konsensus (% Works untuk Dibeli) oleh 1 Hakim Ketua (Arif),
     dan disimpan ke tabel `ai_panel_votes` untuk rapor mingguan!
     """
@@ -402,8 +403,9 @@ def run_5_ai_panel_consensus(
                 {
                     "slot_id": slot_cfg["slot_id"],
                     "ai_name": slot_cfg["ai_name"],
-                    "provider": slot_cfg["provider"],
-                    "model_id": slot_cfg["model_id"],
+                    "provider": "deterministic",
+                    "model_id": "deterministic-v1",
+                    "is_fallback": True,
                     **res,
                 }
             )
@@ -418,8 +420,9 @@ def run_5_ai_panel_consensus(
                 {
                     "slot_id": slot_cfg["slot_id"],
                     "ai_name": slot_cfg["ai_name"],
-                    "provider": slot_cfg["provider"],
-                    "model_id": slot_cfg["model_id"],
+                    "provider": "deterministic",
+                    "model_id": "deterministic-v1",
+                    "is_fallback": True,
                     **res,
                 }
             )
@@ -436,10 +439,9 @@ def run_5_ai_panel_consensus(
     for v in votes:
         w = stats_map.get(v["slot_id"], 1.0)
         total_weight += w
+        # WAIT is a veto, not a 50/50 buy probability. Only BUY votes contribute.
         if v["vote_direction"] == "BUY":
             weighted_buy_score += w * v["confidence_pct"]
-        else:
-            weighted_buy_score += w * max(0.0, 100.0 - v["confidence_pct"])
 
     works_pct = round(weighted_buy_score / max(0.01, total_weight), 1)
 
@@ -467,7 +469,7 @@ def run_5_ai_panel_consensus(
         final_decision = "WAIT"
         verdict_label = f"🔴 VETO DEFENSE AKTIF: DITAHAN AI_6 ({buy_count}/{total_ai} AI Mau Beli Tapi Ditolak)"
         chief_summary = (
-            f"{buy_count} dari {total_ai} AI menyarankan BUY, namun AI_6 (Pattern & Reversal Master - Akurasi 83.3%) "
+            f"{buy_count} dari {total_ai} AI menyarankan BUY, namun AI_6 (Pattern & Reversal Master) "
             f"mengaktifkan VETO DEFENSE dan menyarankan WAIT demi mencegah jebakan false breakout/nyangkut."
         )
     else:
@@ -515,6 +517,7 @@ def _get_slot_accuracy_weights(db: MemoryDatabase) -> dict[str, float]:
                        SUM(CASE WHEN outcome_status IN ('CORRECT_BUY_WIN', 'CORRECT_WAIT_SAVED') THEN 1 ELSE 0 END) AS correct_cnt
                 FROM ai_panel_votes
                 WHERE outcome_status != 'PENDING' AND outcome_status != 'NEUTRAL'
+                  AND model_id != 'deterministic-v1'
                 GROUP BY slot_id
                 """
             ).fetchall()
@@ -563,83 +566,13 @@ def format_panel_consensus_section(consensus: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def backfill_panel_votes_for_existing_history(db: Optional[MemoryDatabase] = None) -> int:
-    """
-    Memastikan seluruh riwayat prediksi yang sudah dievaluasi di database memiliki catatan suara 5 AI
-    sehingga Rapor Mingguan AI langsung memiliki statistik akurasi nyata sejak hari pertama.
-    """
-    db_inst = db or MemoryDatabase()
-    panel_slots = db_inst.get_ai_panel_registry()
-    count = 0
-    with db_inst.connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT ah.*, ms.price, ms.vwap, ms.rsi, ms.macd_hist, ms.vol_ratio, ms.spread_pct,
-                   po.evaluation_status, po.net_return_pct, po.actual_high_in_horizon, po.actual_low_in_horizon
-            FROM analysis_history ah
-            JOIN market_snapshots ms ON ah.snapshot_id = ms.snapshot_id
-            LEFT JOIN prediction_outcomes po ON ah.analysis_id = po.analysis_id
-            WHERE NOT EXISTS (
-                SELECT 1 FROM ai_panel_votes pv WHERE pv.analysis_id = ah.analysis_id
-            )
-            """
-        ).fetchall()
-
-    for r in rows:
-        snap_mock = {
-            "quant_score": r["raw_quant_score"],
-            "current_price": r["price"],
-            "intraday_vwap": r["vwap"] or r["price"],
-            "intraday_rsi": r["rsi"] or 50.0,
-            "intraday_macd_hist": r["macd_hist"] or 0.0,
-            "daily_vol_ratio": r["vol_ratio"] or 1.0,
-            "intraday_vol_spike_ratio": r["vol_ratio"] or 1.0,
-            "spread_pct": r["spread_pct"] or 0.35,
-            "reward_to_risk": r["reward_to_risk"] or 1.5,
-            "estimated_net_return_pct": r["estimated_net_return_pct"] or 1.2,
-            "daily_trend": "UPTREND" if int(r["raw_quant_score"] or 50) >= 62 else "SIDEWAYS",
-        }
-        votes = []
-        for slot_cfg in panel_slots:
-            res = _deterministic_slot_vote(
-                slot_cfg["slot_id"],
-                snap_mock,
-                float(r["calibrated_confidence"] or 0.55),
-                False,
-            )
-            votes.append(
-                {
-                    "slot_id": slot_cfg["slot_id"],
-                    "ai_name": slot_cfg["ai_name"],
-                    "provider": slot_cfg["provider"],
-                    "model_id": slot_cfg["model_id"],
-                    **res,
-                }
-            )
-        db_inst.save_ai_panel_votes(str(r["analysis_id"]), str(r["ticker"]), votes)
-        if r["evaluation_status"] and r["evaluation_status"] != "PENDING":
-            db_inst.grade_ai_panel_votes_for_outcome(
-                analysis_id=str(r["analysis_id"]),
-                evaluation_status=str(r["evaluation_status"]),
-                net_return_pct=float(r["net_return_pct"] or 0.0),
-                actual_high=r["actual_high_in_horizon"],
-                actual_low=r["actual_low_in_horizon"],
-                entry_high=float(r["entry_high"]),
-                take_profit_1=float(r["take_profit_1"]),
-                stop_loss=float(r["stop_loss"]),
-            )
-        count += 1
-    return count
-
-
 def generate_weekly_ai_leaderboard_report(days: int = 7, db: Optional[MemoryDatabase] = None) -> str:
     """
-    Menghasilkan Rapor Mingguan Performa 5 AI:
-    - Mengurutkan AI dari yang paling akurat (#1 Terbaik) sampai yang paling buruk (#5).
+    Menghasilkan Rapor Mingguan Performa 6 AI:
+    - Mengurutkan AI dari yang paling akurat (#1 Terbaik) sampai yang paling buruk (#6).
     - Menunjukkan AI mana yang bagus dipertahankan dan AI mana yang jelek & layak diganti.
     """
     db_inst = db or MemoryDatabase()
-    backfill_panel_votes_for_existing_history(db_inst)
     slots = {s["slot_id"]: s for s in db_inst.get_ai_panel_registry()}
 
     with db_inst.connect() as conn:
@@ -654,6 +587,7 @@ def generate_weekly_ai_leaderboard_report(days: int = 7, db: Optional[MemoryData
                    SUM(CASE WHEN outcome_status = 'MISSED_WAIT_OPPORTUNITY' THEN 1 ELSE 0 END) AS wait_missed,
                    AVG(CASE WHEN vote_direction = 'BUY' AND outcome_status != 'PENDING' THEN outcome_net_return_pct ELSE NULL END) AS avg_buy_net_ret
             FROM ai_panel_votes
+            WHERE model_id != 'deterministic-v1'
             GROUP BY slot_id
             """
         ).fetchall()
@@ -696,7 +630,7 @@ def generate_weekly_ai_leaderboard_report(days: int = 7, db: Optional[MemoryData
     leaderboard.sort(key=lambda x: (x["accuracy_pct"], x["buy_win_rate"]), reverse=True)
 
     lines = [
-        "🏆 *RAPOR MINGGUAN 5 AI: SIAPA PALING JAGO vs SIAPA HARUS DIGANTI*",
+        "🏆 *RAPOR MINGGUAN 6 AI: SIAPA PALING JAGO vs SIAPA HARUS DIGANTI*",
         "━━━━━━━━━━━━━━━━━━━━━━",
         "_Setiap AI dinilai dari: seberapa sering tebakan BUY-nya cuan, dan seberapa sering tebakan WAIT-nya berhasil menyelamatkan Bos dari saham nyangkut._\n",
     ]

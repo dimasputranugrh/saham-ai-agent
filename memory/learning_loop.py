@@ -16,6 +16,7 @@ from analyzer.technical import (
     compute_vwap,
     get_idx_tick_size,
     get_ihsg_overview,
+    get_ihsg_regime_as_of,
     round_idx_tick,
 )
 from memory.database import MemoryDatabase, now_wib_iso
@@ -53,6 +54,7 @@ class LearningLoopOrchestrator:
         horizon_bars: int = 8,
         horizon_minutes: int = 120,
         execution_mode: str = config.EXECUTION_MODE,
+        save_prediction: bool = True,
     ) -> Optional[dict[str, Any]]:
         """
         Executes Steps 1–5 of the Learning Loop for a single stock:
@@ -77,6 +79,7 @@ class LearningLoopOrchestrator:
         strat_params = active_ver["parameters"]
         min_score_param = int(strat_params.get("min_intraday_score", config.MIN_INTRADAY_ALERT_SCORE))
         max_spread_param = float(strat_params.get("max_spread_pct", 0.65))
+        bar_cutoff = snap.last_bar_iso or now_wib_iso()
 
         # Step 2: Retrieve relevant historical memories & calibrated confidence
         mem_bundle = self.retriever.retrieve_relevant_memories(
@@ -85,6 +88,9 @@ class LearningLoopOrchestrator:
             timeframe=timeframe,
             ihsg_regime=ihsg_regime,
             max_items=5,
+            execution_mode=execution_mode,
+            strategy_version=strat_ver_tag,
+            as_of=bar_cutoff,
         )
         calibrated_conf, conf_basis = self.retriever.calibrate_confidence(
             raw_quant_score=snap.quant_score,
@@ -92,6 +98,9 @@ class LearningLoopOrchestrator:
             timeframe=timeframe,
             ihsg_regime=ihsg_regime,
             ticker=norm_ticker,
+            execution_mode=execution_mode,
+            strategy_version=strat_ver_tag,
+            as_of=bar_cutoff,
         )
 
         # Step 3: Apply learned lessons & active strategy guards to decision
@@ -115,14 +124,13 @@ class LearningLoopOrchestrator:
                 f"Spread 1 tick ({snap.spread_pct:.2f}%) melebihi batas parameter strategi aktif ({max_spread_param:.2f}%)."
             )
 
-        if final_direction == "BUY" and snap.quant_score < max(60, min_score_param - 6):
+        if final_direction == "BUY" and snap.quant_score < min_score_param:
             final_direction = "WAIT"
             opposing_ev.append(
-                f"Skor kuantitatif ({snap.quant_score}) di bawah ambang minimal strategi v{strat_ver_tag}."
+                f"Skor kuantitatif ({snap.quant_score}) di bawah ambang minimal strategi v{strat_ver_tag} ({min_score_param})."
             )
 
         # Step 4: Save Market Snapshot
-        bar_cutoff = snap.last_bar_iso or now_wib_iso()
         snapshot_id = self.db.save_market_snapshot(
             {
                 "ticker": snap.ticker,
@@ -156,67 +164,116 @@ class LearningLoopOrchestrator:
             }
         )
 
-        # Step 5: Save Immutable Initial Prediction before outcome is known
-        eval_after_dt = datetime.now(WIB) + timedelta(minutes=horizon_minutes)
-        analysis_id = self.db.save_analysis_prediction(
-            {
-                "snapshot_id": snapshot_id,
-                "bar_cutoff_timestamp": bar_cutoff,
-                "ticker": snap.ticker,
-                "timeframe": timeframe,
-                "direction": final_direction,
-                "execution_mode": execution_mode,
-                "strategy_name": config.DEFAULT_STRATEGY_NAME,
-                "setup_type": snap.setup_type,
-                "ihsg_regime": ihsg_regime,
-                "sector": config.SECTOR_MAP.get(snap.ticker, "GENERAL_IDX"),
-                "technical_facts": snap.technical_facts,
-                "interpretations": interpretations,
-                "assumptions": snap.assumptions,
-                "supporting_evidence": supporting_ev,
-                "opposing_evidence": opposing_ev,
-                "fundamental_news_context": news_context,
-                "entry_price": snap.entry_high,
-                "entry_low": snap.entry_low,
-                "entry_high": snap.entry_high,
-                "stop_loss": snap.stop_loss,
-                "take_profit_1": snap.take_profit_1,
-                "take_profit_2": snap.take_profit_2,
-                "horizon_bars": horizon_bars,
-                "horizon_minutes": horizon_minutes,
-                "evaluate_after_wib": eval_after_dt.isoformat(),
-                "estimated_risk_pct": snap.estimated_risk_pct,
-                "estimated_gross_return_pct": snap.estimated_gross_return_pct,
-                "estimated_net_return_pct": snap.estimated_net_return_pct,
-                "reward_to_risk": snap.reward_to_risk,
-                "raw_quant_score": snap.quant_score,
-                "calibrated_confidence": calibrated_conf,
-                "confidence_basis": conf_basis,
-                "invalidation_conditions": snap.invalidation_conditions,
-                "model_version": config.GEMINI_MODEL,
-                "prompt_version": config.AGENT_PROMPT_VERSION,
-                "strategy_version": strat_ver_tag,
-                "memory_ids_used": mem_bundle["memory_ids_used"],
-            }
-        )
-
-        return {
-            "analysis_id": analysis_id,
+        # Step 5: Build context; saving can be deferred until the AI panel decides.
+        ctx = {
             "snapshot_id": snapshot_id,
             "snapshot": snap,
-            "final_direction": final_direction,
-            "calibrated_confidence": calibrated_conf,
-            "confidence_basis": conf_basis,
-            "supporting_evidence": supporting_ev,
-            "opposing_evidence": opposing_ev,
+            "bar_cutoff": bar_cutoff,
+            "ticker": snap.ticker,
+            "timeframe": timeframe,
+            "execution_mode": execution_mode,
+            "strategy_name": config.DEFAULT_STRATEGY_NAME,
+            "setup_type": snap.setup_type,
+            "ihsg_regime": ihsg_regime,
+            "sector": config.SECTOR_MAP.get(snap.ticker, "GENERAL_IDX"),
             "technical_facts": snap.technical_facts,
             "interpretations": interpretations,
             "assumptions": snap.assumptions,
+            "supporting_evidence": supporting_ev,
+            "opposing_evidence": opposing_ev,
+            "fundamental_news_context": news_context,
+            "entry_price": snap.entry_high,
+            "entry_low": snap.entry_low,
+            "entry_high": snap.entry_high,
+            "stop_loss": snap.stop_loss,
+            "take_profit_1": snap.take_profit_1,
+            "take_profit_2": snap.take_profit_2,
+            "horizon_bars": horizon_bars,
+            "horizon_minutes": horizon_minutes,
+            "estimated_risk_pct": snap.estimated_risk_pct,
+            "estimated_gross_return_pct": snap.estimated_gross_return_pct,
+            "estimated_net_return_pct": snap.estimated_net_return_pct,
+            "reward_to_risk": snap.reward_to_risk,
+            "raw_quant_score": snap.quant_score,
+            "calibrated_confidence": calibrated_conf,
+            "confidence_basis": conf_basis,
             "invalidation_conditions": snap.invalidation_conditions,
-            "memory_bundle": mem_bundle,
+            "model_version": config.GEMINI_MODEL,
+            "prompt_version": config.AGENT_PROMPT_VERSION,
             "strategy_version": strat_ver_tag,
+            "memory_ids_used": mem_bundle["memory_ids_used"],
+            "final_direction": final_direction,
+            "memory_bundle": mem_bundle,
             "ihsg_info": ihsg_info,
         }
+        if not save_prediction:
+            return ctx
+        return self.record_final_prediction(ctx, final_direction)
+
+    def record_final_prediction(
+        self,
+        ctx: dict[str, Any],
+        final_direction: str,
+        panel_votes: Optional[list[dict[str, Any]]] = None,
+    ) -> dict[str, Any]:
+        """Persist one immutable decision, after the panel has spoken."""
+        final_direction = str(final_direction).upper()
+        if final_direction not in ("BUY", "SELL", "WAIT", "AVOID"):
+            final_direction = "WAIT"
+        eval_after_dt = datetime.now(WIB) + timedelta(minutes=int(ctx["horizon_minutes"]))
+        analysis_id = self.db.save_analysis_prediction(
+            {
+                "snapshot_id": ctx["snapshot_id"],
+                "bar_cutoff_timestamp": ctx["bar_cutoff"],
+                "ticker": ctx["ticker"],
+                "timeframe": ctx["timeframe"],
+                "direction": final_direction,
+                "execution_mode": ctx["execution_mode"],
+                "strategy_name": ctx["strategy_name"],
+                "setup_type": ctx["setup_type"],
+                "ihsg_regime": ctx["ihsg_regime"],
+                "sector": ctx["sector"],
+                "technical_facts": ctx["technical_facts"],
+                "interpretations": ctx["interpretations"],
+                "assumptions": ctx["assumptions"],
+                "supporting_evidence": ctx["supporting_evidence"],
+                "opposing_evidence": ctx["opposing_evidence"],
+                "fundamental_news_context": ctx["fundamental_news_context"],
+                "entry_price": ctx["entry_price"],
+                "entry_low": ctx["entry_low"],
+                "entry_high": ctx["entry_high"],
+                "stop_loss": ctx["stop_loss"],
+                "take_profit_1": ctx["take_profit_1"],
+                "take_profit_2": ctx["take_profit_2"],
+                "horizon_bars": ctx["horizon_bars"],
+                "horizon_minutes": ctx["horizon_minutes"],
+                "evaluate_after_wib": eval_after_dt.isoformat(),
+                "estimated_risk_pct": ctx["estimated_risk_pct"],
+                "estimated_gross_return_pct": ctx["estimated_gross_return_pct"],
+                "estimated_net_return_pct": ctx["estimated_net_return_pct"],
+                "reward_to_risk": ctx["reward_to_risk"],
+                "raw_quant_score": ctx["raw_quant_score"],
+                "calibrated_confidence": ctx["calibrated_confidence"],
+                "confidence_basis": ctx["confidence_basis"],
+                "invalidation_conditions": ctx["invalidation_conditions"],
+                "model_version": ctx["model_version"],
+                "prompt_version": ctx["prompt_version"],
+                "strategy_version": ctx["strategy_version"],
+                "memory_ids_used": ctx["memory_ids_used"],
+            }
+        )
+        ctx["analysis_id"] = analysis_id
+        ctx["final_direction"] = final_direction
+        if panel_votes:
+            try:
+                self.db.save_ai_panel_votes(
+                    analysis_id=str(analysis_id),
+                    ticker=str(ctx["ticker"]),
+                    votes=panel_votes,
+                )
+            except Exception:
+                pass
+        return ctx
 
     def run_evaluation_and_learning_cycle(self) -> dict[str, Any]:
         """
@@ -227,7 +284,11 @@ class LearningLoopOrchestrator:
         """
         resolved = self.evaluator.evaluate_pending_predictions()
         lessons = self.evaluator.recompute_strategy_lessons()
-        improvement = self.perf.propose_and_validate_strategy_improvement()
+        active = self.db.get_active_strategy_version(config.DEFAULT_STRATEGY_NAME)
+        improvement = self.perf.propose_and_validate_strategy_improvement(
+            execution_mode=config.EXECUTION_MODE,
+            strategy_version=str(active["version_tag"]),
+        )
         return {
             "newly_evaluated_count": len(resolved),
             "lessons_updated_count": len(lessons),
@@ -248,8 +309,12 @@ class LearningLoopOrchestrator:
         and updates `strategy_lessons` step-by-step so subsequent steps benefit from learned memory!
         """
         target_tickers = tickers or ["TLKM.JK", "BBRI.JK", "ASII.JK", "BMRI.JK", "ANTM.JK", "GOTO.JK"]
-        ihsg_info = get_ihsg_overview()
-        ihsg_regime = str(ihsg_info.get("regime", "BEARISH_RECOVERY"))
+        try:
+            ihsg_daily = yf.Ticker("^JKSE").history(period="3mo", interval="1d")
+        except Exception:
+            ihsg_daily = None
+        active_ver = self.db.get_active_strategy_version(config.DEFAULT_STRATEGY_NAME)
+        strat_ver_tag = str(active_ver["version_tag"])
         total_created = 0
         total_evaluated = 0
 
@@ -258,7 +323,7 @@ class LearningLoopOrchestrator:
             is_idx = ticker.endswith(".JK")
             try:
                 tk = yf.Ticker(ticker)
-                df = tk.history(period="1mo", interval=timeframe, auto_adjust=False)
+                df = tk.history(period="1mo", interval=timeframe, auto_adjust=True)
             except Exception:
                 continue
             if df is None or df.empty or len(df) < 45:
@@ -277,6 +342,23 @@ class LearningLoopOrchestrator:
                 # STRICT CAUSAL SLICE: only bars up to `idx` (inclusive) are visible!
                 visible = df.iloc[: idx + 1].copy()
                 cutoff_ts = visible.index[-1]
+                ihsg_info = get_ihsg_regime_as_of(cutoff_ts, ihsg_daily)
+                ihsg_regime = str(ihsg_info.get("regime", "NEUTRAL"))
+                as_of = cutoff_ts.isoformat()
+
+                # Idempotent walk-forward: never create a second prediction for the same bar.
+                with self.db.connect() as conn:
+                    already = conn.execute(
+                        """
+                        SELECT analysis_id FROM analysis_history
+                        WHERE ticker = ? AND timeframe = ? AND bar_cutoff_timestamp = ?
+                          AND execution_mode = 'BACKTEST' AND strategy_version = ?
+                        LIMIT 1
+                        """,
+                        (ticker, timeframe, as_of, strat_ver_tag),
+                    ).fetchone()
+                if already is not None:
+                    continue
 
                 c = visible["Close"]
                 visible["VWAP"] = compute_vwap(visible)
@@ -331,6 +413,9 @@ class LearningLoopOrchestrator:
                     timeframe=timeframe,
                     ihsg_regime=ihsg_regime,
                     max_items=4,
+                    execution_mode="BACKTEST",
+                    strategy_version=strat_ver_tag,
+                    as_of=as_of,
                 )
                 cal_conf, conf_basis = self.retriever.calibrate_confidence(
                     raw_quant_score=score,
@@ -338,6 +423,9 @@ class LearningLoopOrchestrator:
                     timeframe=timeframe,
                     ihsg_regime=ihsg_regime,
                     ticker=ticker,
+                    execution_mode="BACKTEST",
+                    strategy_version=strat_ver_tag,
+                    as_of=as_of,
                 )
 
                 direction = "BUY" if (score >= 62 and spread_pct <= 0.80 and not mem_bundle["has_degraded_warning"]) else "WAIT"
@@ -422,6 +510,9 @@ class LearningLoopOrchestrator:
                         "confidence_basis": conf_basis,
                         "invalidation_conditions": f"Close < {sl:.0f}",
                         "memory_ids_used": mem_bundle["memory_ids_used"],
+                        "strategy_version": strat_ver_tag,
+                        "model_version": "walk_forward_engine",
+                        "prompt_version": config.AGENT_PROMPT_VERSION,
                     }
                 )
                 total_created += 1
@@ -440,7 +531,10 @@ class LearningLoopOrchestrator:
                     # Update lessons after each chronological outcome so the next step learns from it!
                     self.evaluator.recompute_strategy_lessons()
 
-        improvement = self.perf.propose_and_validate_strategy_improvement()
+        improvement = self.perf.propose_and_validate_strategy_improvement(
+            execution_mode="BACKTEST",
+            strategy_version=strat_ver_tag,
+        )
         return {
             "walk_forward_predictions_created": total_created,
             "walk_forward_outcomes_evaluated": total_evaluated,

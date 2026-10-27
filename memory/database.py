@@ -18,6 +18,7 @@ VALID_EVAL_STATUSES = {
     "PENDING",
     "RESOLVED_WIN_TP1",
     "RESOLVED_WIN_TP2",
+    "RESOLVED_WIN_TRAILING_SL",
     "RESOLVED_LOSS_SL",
     "RESOLVED_TIME_EXIT",
     "AMBIGUOUS_BAR_ORDER",
@@ -356,6 +357,16 @@ class MemoryDatabase:
         data_is_valid = 1 if data.get("data_is_valid", True) else 0
 
         with self.connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT snapshot_id FROM market_snapshots
+                WHERE ticker = ? AND timeframe = ? AND last_bar_timestamp = ?
+                LIMIT 1
+                """,
+                (ticker, timeframe, last_bar_ts),
+            ).fetchone()
+            if existing is not None:
+                return str(existing["snapshot_id"])
             conn.execute(
                 """
                 INSERT INTO market_snapshots (
@@ -449,8 +460,31 @@ class MemoryDatabase:
         created_at = str(record.get("created_at_wib") or now_wib_iso())
         bar_cutoff = str(record.get("bar_cutoff_timestamp") or created_at)
         ticker = str(record.get("ticker", "")).strip().upper()
+        strategy_name = str(record.get("strategy_name", config.DEFAULT_STRATEGY_NAME))
+        strategy_version = str(
+            record.get("strategy_version")
+            or self.get_active_strategy_version(strategy_name)["version_tag"]
+        )
 
         with self.connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT analysis_id FROM analysis_history
+                WHERE ticker = ? AND timeframe = ? AND bar_cutoff_timestamp = ?
+                  AND execution_mode = ? AND strategy_name = ? AND strategy_version = ?
+                LIMIT 1
+                """,
+                (
+                    ticker,
+                    str(record.get("timeframe", "15m")),
+                    bar_cutoff,
+                    exec_mode,
+                    strategy_name,
+                    strategy_version,
+                ),
+            ).fetchone()
+            if existing is not None:
+                return str(existing["analysis_id"])
             conn.execute(
                 """
                 INSERT INTO analysis_history (
@@ -490,7 +524,7 @@ class MemoryDatabase:
                     str(record.get("timeframe", "15m")),
                     direction,
                     exec_mode,
-                    str(record.get("strategy_name", config.DEFAULT_STRATEGY_NAME)),
+                    strategy_name,
                     str(record.get("setup_type", "GENERAL_SETUP")),
                     str(record.get("ihsg_regime", "NEUTRAL")),
                     str(record.get("sector") or config.SECTOR_MAP.get(ticker, "GENERAL_IDX")),
@@ -519,7 +553,7 @@ class MemoryDatabase:
                     str(record.get("invalidation_conditions", "Price closes below Stop Loss or VWAP.")),
                     str(record.get("model_version", config.GEMINI_MODEL)),
                     str(record.get("prompt_version", config.AGENT_PROMPT_VERSION)),
-                    str(record.get("strategy_version", self.get_active_strategy_version(str(record.get("strategy_name", config.DEFAULT_STRATEGY_NAME)))["version_tag"])),
+                    strategy_version,
                     json.dumps(record.get("memory_ids_used") or []),
                 ),
             )
@@ -796,7 +830,7 @@ class MemoryDatabase:
         stop_loss: float,
     ) -> int:
         """
-        Grades each of the 5 AIs' votes once the real market outcome is known:
+        Grades each of the 6 AIs' votes once the real market outcome is known:
         - If price reached TP1 or net_return_pct >= 0.40%:
           * BUY vote -> CORRECT_BUY_WIN
           * WAIT vote -> MISSED_WAIT_OPPORTUNITY
@@ -814,7 +848,7 @@ class MemoryDatabase:
                 return 0
 
             hit_tp = (
-                evaluation_status in ("RESOLVED_WIN_TP1", "RESOLVED_WIN_TP2")
+                evaluation_status in ("RESOLVED_WIN_TP1", "RESOLVED_WIN_TP2", "RESOLVED_WIN_TRAILING_SL")
                 or net_return_pct >= 0.40
                 or (actual_high is not None and actual_high >= take_profit_1 and (actual_low is None or actual_low > stop_loss))
             )
@@ -926,8 +960,8 @@ class MemoryDatabase:
                 now_iso,
                 "PANEL_5_AI_DAN_EVALUASI_MINGGUAN",
                 "DISKUSI_BOS_DIMAS",
-                "Gunakan 5 AI gratis lintas perusahaan (Google Gemini 3.6, OpenAI 120B via Groq, NVIDIA Nemotron 550B via OpenRouter, Alibaba Qwen 3.8 via Groq, dan Quant Bayesian) + 1 Hakim Ketua, lalu beri rapor mingguan AI terbaik vs terburuk.",
-                "Setiap keputusan beli/tahan harus melalui persentase voting 5 AI (% Works) dan dievaluasi akurasinya setiap minggu agar AI yang jelek bisa diganti.",
+                "Gunakan 6 AI gratis lintas perusahaan (Google Gemini 3.6, OpenAI 120B via Groq, NVIDIA Nemotron 550B via OpenRouter, Alibaba Qwen 3.8 via Groq, dan Quant Bayesian) + 1 Hakim Ketua, lalu beri rapor mingguan AI terbaik vs terburuk.",
+                "Setiap keputusan beli/tahan harus melalui persentase voting 6 AI (% Works) dan dievaluasi akurasinya setiap minggu agar AI yang jelek bisa diganti.",
                 json.dumps(["ALL_IDX"]),
                 1,
             ),

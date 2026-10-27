@@ -9,3 +9,4 @@ data/*.db-shm
 data/*.db-wal
 data/backups/
 data/portfolio.json
+data/trade_ledger.json

@@ -59,6 +59,8 @@ def analyze_bandarmologi_footprint(
             "summary": "Data transaksi harian belum cukup untuk memetakan konsentrasi bandar.",
             "top_buyers_estimate": ["Asing", "Institusi"],
             "top_sellers_estimate": ["Ritel Domestik"],
+            "data_basis": "PROXY_CMF_CLV_VOLUME",
+            "proxy_note": "Estimasi dari harga/volume; bukan data broker summary real-time.",
         }
 
     last_bars = df_daily.iloc[-5:]
@@ -87,7 +89,7 @@ def analyze_bandarmologi_footprint(
         top_buyers = ["AK (UBS)", "BK (JPMorgan)", "ZP (Maybank)"]
         top_sellers = ["YP (Mirae)", "PD (IPOT)", "XC (Ajaib)"]
         summary = (
-            f"Terdeteksi Akumulasi Masif dari broker asing/institusi. "
+            f"(Proxy CMF/CLV) Terdeteksi Akumulasi Masif dari broker asing/institusi. "
             f"Konsentrasi Top 3 Broker mencapai {top3_concentration}% barang. "
             f"Ritel terlihat banyak melepas barang (jual) ke tangan institusi."
         )
@@ -108,7 +110,7 @@ def analyze_bandarmologi_footprint(
         top_buyers = ["YP (Mirae)", "XC (Ajaib)", "PD (IPOT)"]
         top_sellers = ["AK (UBS)", "BK (JPMorgan)", "RX (Macquarie)"]
         summary = (
-            f"WASPADA: Distribusi Masif! Broker asing/institusi giat membuang barang ke pasar ritel. "
+            f"(Proxy CMF/CLV) WASPADA: Distribusi Masif! Broker asing/institusi giat membuang barang ke pasar ritel. "
             f"Konsentrasi penjualan tinggi, hindari menangkap pisau jatuh sampai aksi guyur mereda."
         )
     elif cmf_val <= -0.02 or clv <= -0.30:
@@ -139,4 +141,6 @@ def analyze_bandarmologi_footprint(
         "summary": summary,
         "chaikin_money_flow": round(cmf_val, 3),
         "volume_surge_ratio": round(vol_ratio, 2),
+        "data_basis": "PROXY_CMF_CLV_VOLUME",
+        "proxy_note": "Estimasi dari CMF/CLV/volume; bukan data broker summary real-time.",
     }

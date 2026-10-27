@@ -21,41 +21,75 @@ class MemoryRetriever:
         timeframe: str,
         ihsg_regime: str,
         ticker: Optional[str] = None,
+        execution_mode: Optional[str] = None,
+        strategy_version: Optional[str] = None,
+        as_of: Optional[str] = None,
     ) -> tuple[float, str]:
         """
         Computes a Bayesian-shrunk calibrated confidence score in [0.05, 0.92]
         combining a conservative quantitative prior with empirical win rates
         from resolved predictions in `prediction_outcomes`.
+        `as_of` + mode/version filters keep backtests strictly chronological.
         """
         prior_p = max(0.15, min(0.75, 0.35 + (raw_quant_score - 50) * 0.006))
         prior_weight = 10.0  # Pseudo-count M = 10
 
+        clauses = [
+            "a.setup_type = ?",
+            "a.timeframe = ?",
+            "o.entry_filled = 1",
+            "o.is_ambiguous = 0",
+            "o.evaluation_status LIKE 'RESOLVED_%'",
+        ]
+        params: list[Any] = [setup_type, timeframe]
+        if execution_mode:
+            clauses.append("a.execution_mode = ?")
+            params.append(execution_mode.upper())
+        if strategy_version:
+            clauses.append("a.strategy_version = ?")
+            params.append(strategy_version)
+        if as_of:
+            clauses.append("o.evaluated_at_wib <= ?")
+            params.append(as_of)
+
+        lesson_clauses = [
+            "setup_type = ?",
+            "timeframe = ?",
+            "ihsg_regime = ?",
+            "validation_status = 'DEGRADED'",
+        ]
+        lesson_params: list[Any] = [setup_type, timeframe, ihsg_regime]
+        if execution_mode:
+            lesson_clauses.append("execution_mode = ?")
+            lesson_params.append(execution_mode.upper())
+        if strategy_version:
+            lesson_clauses.append("strategy_version = ?")
+            lesson_params.append(strategy_version)
+        if as_of:
+            lesson_clauses.append("evaluated_at_wib <= ?")
+            lesson_params.append(as_of)
+
         with self.db.connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT o.net_return_pct, o.is_ambiguous, a.ticker
                 FROM analysis_history a
                 INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
-                WHERE a.setup_type = ?
-                  AND a.timeframe = ?
-                  AND o.entry_filled = 1
-                  AND o.is_ambiguous = 0
-                  AND o.evaluation_status LIKE 'RESOLVED_%'
+                WHERE {' AND '.join(clauses)}
                 ORDER BY o.evaluated_at_wib DESC
                 LIMIT 100
                 """,
-                (setup_type, timeframe),
+                tuple(params),
             ).fetchall()
 
             degraded_row = conn.execute(
-                """
+                f"""
                 SELECT validation_status, expectancy_net_pct, resolved_trades
                 FROM strategy_lessons
-                WHERE setup_type = ? AND timeframe = ? AND ihsg_regime = ?
-                  AND validation_status = 'DEGRADED'
+                WHERE {' AND '.join(lesson_clauses)}
                 LIMIT 1
                 """,
-                (setup_type, timeframe, ihsg_regime),
+                tuple(lesson_params),
             ).fetchone()
 
         n_samples = len(rows)
@@ -84,11 +118,15 @@ class MemoryRetriever:
         timeframe: str,
         ihsg_regime: str,
         max_items: int = 6,
+        execution_mode: Optional[str] = None,
+        strategy_version: Optional[str] = None,
+        as_of: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Queries structured database tables for relevant lessons, same-ticker history,
         comparable setup/regime history, and past mistakes.
         Caps output to `max_items` to keep LLM context compact and high-signal.
+        `as_of` prevents walk-forward steps from reading future outcomes/lessons.
         """
         norm_ticker = config.normalize_ticker(ticker)
         memory_items: list[dict[str, Any]] = []
@@ -96,15 +134,39 @@ class MemoryRetriever:
         has_degraded_warning = False
         degraded_reason = ""
 
+        lesson_filters = ["setup_type = ?", "timeframe = ?", "(ticker_scope = ? OR ticker_scope = 'ALL')"]
+        lesson_params: list[Any] = [setup_type, timeframe, norm_ticker]
+        if execution_mode:
+            lesson_filters.append("execution_mode = ?")
+            lesson_params.append(execution_mode.upper())
+        if strategy_version:
+            lesson_filters.append("strategy_version = ?")
+            lesson_params.append(strategy_version)
+        if as_of:
+            lesson_filters.append("evaluated_at_wib <= ?")
+            lesson_params.append(as_of)
+
+        def outcome_filters(extra: list[str], extra_params: list[Any]) -> tuple[str, tuple[Any, ...]]:
+            filters = list(extra)
+            params = list(extra_params)
+            if execution_mode:
+                filters.append("a.execution_mode = ?")
+                params.append(execution_mode.upper())
+            if strategy_version:
+                filters.append("a.strategy_version = ?")
+                params.append(strategy_version)
+            if as_of:
+                filters.append("o.evaluated_at_wib <= ?")
+                params.append(as_of)
+            return " AND ".join(filters), tuple(params)
+
         with self.db.connect() as conn:
             # 1. Validated or Degraded Strategy Lessons for this ticker or ALL
             lesson_rows = conn.execute(
-                """
+                f"""
                 SELECT *
                 FROM strategy_lessons
-                WHERE setup_type = ?
-                  AND timeframe = ?
-                  AND (ticker_scope = ? OR ticker_scope = 'ALL')
+                WHERE {' AND '.join(lesson_filters)}
                 ORDER BY
                     CASE WHEN ticker_scope = ? THEN 0 ELSE 1 END,
                     CASE validation_status
@@ -115,7 +177,7 @@ class MemoryRetriever:
                     resolved_trades DESC
                 LIMIT 3
                 """,
-                (setup_type, timeframe, norm_ticker, norm_ticker),
+                (*lesson_params, norm_ticker),
             ).fetchall()
 
             for row in lesson_rows:
@@ -141,19 +203,20 @@ class MemoryRetriever:
                 )
 
             # 2. Same-ticker recent resolved outcomes (especially mistakes & wins)
+            ticker_where, ticker_params = outcome_filters(["a.ticker = ?"], [norm_ticker])
             ticker_rows = conn.execute(
-                """
+                f"""
                 SELECT
                     a.analysis_id, a.ticker, a.setup_type, a.timeframe, a.ihsg_regime,
                     a.direction, a.entry_high, a.stop_loss, a.take_profit_1,
                     o.evaluated_at_wib, o.evaluation_status, o.net_return_pct, o.resolution_notes
                 FROM analysis_history a
                 INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
-                WHERE a.ticker = ?
+                WHERE {ticker_where}
                 ORDER BY o.evaluated_at_wib DESC
                 LIMIT 3
                 """,
-                (norm_ticker,),
+                ticker_params,
             ).fetchall()
 
             for row in ticker_rows:
@@ -182,20 +245,26 @@ class MemoryRetriever:
 
             # 3. Past mistakes on the same setup + IHSG regime across other tickers
             if len(memory_items) < max_items:
+                mistake_where, mistake_params = outcome_filters(
+                    [
+                        "a.setup_type = ?",
+                        "a.ihsg_regime = ?",
+                        "(o.evaluation_status = 'RESOLVED_LOSS_SL' OR o.net_return_pct < -0.5)",
+                    ],
+                    [setup_type, ihsg_regime],
+                )
                 mistake_rows = conn.execute(
-                    """
+                    f"""
                     SELECT
                         a.analysis_id, a.ticker, a.setup_type, a.timeframe, a.ihsg_regime,
                         o.evaluated_at_wib, o.evaluation_status, o.net_return_pct, o.resolution_notes
                     FROM analysis_history a
                     INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
-                    WHERE a.setup_type = ?
-                      AND a.ihsg_regime = ?
-                      AND (o.evaluation_status = 'RESOLVED_LOSS_SL' OR o.net_return_pct < -0.5)
+                    WHERE {mistake_where}
                     ORDER BY o.evaluated_at_wib DESC
                     LIMIT 2
                     """,
-                    (setup_type, ihsg_regime),
+                    mistake_params,
                 ).fetchall()
 
                 for row in mistake_rows:
@@ -226,6 +295,9 @@ class MemoryRetriever:
             "setup_type": setup_type,
             "timeframe": timeframe,
             "ihsg_regime": ihsg_regime,
+            "execution_mode": execution_mode,
+            "strategy_version": strategy_version,
+            "as_of": as_of,
             "has_degraded_warning": has_degraded_warning,
             "degraded_reason": degraded_reason,
             "memory_ids_used": memory_ids_used,

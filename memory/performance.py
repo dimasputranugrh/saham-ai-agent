@@ -1,7 +1,10 @@
 import json
 import uuid
+from datetime import datetime
 from typing import Any, Optional
 import numpy as np
+import pandas as pd
+import yfinance as yf
 
 import config
 from memory.database import MemoryDatabase, now_wib_iso
@@ -59,6 +62,16 @@ class PerformanceAnalyzer:
         cum_net = round(sum(net_rets), 3)
         cum_gross = round(sum(gross_rets), 3)
 
+        sharpe = 0.0
+        sortino = 0.0
+        if n_res > 1:
+            mean_ret = float(np.mean(net_rets))
+            std_ret = float(np.std(net_rets, ddof=1))
+            downside = [r for r in net_rets if r < 0]
+            downside_std = float(np.std(downside, ddof=1)) if len(downside) > 1 else 0.0
+            sharpe = round(mean_ret / std_ret, 3) if std_ret > 0 else 0.0
+            sortino = round(mean_ret / downside_std, 3) if downside_std > 0 else 0.0
+
         return {
             "total_evaluated": total_evaluated,
             "resolved_trades": n_res,
@@ -73,9 +86,38 @@ class PerformanceAnalyzer:
             "expectancy_net_pct": expectancy,
             "profit_factor": pf,
             "max_drawdown_pct": max_dd,
+            "sharpe_per_trade": sharpe,
+            "sortino_per_trade": sortino,
             "cumulative_gross_return_pct": cum_gross,
             "cumulative_net_return_pct": cum_net,
         }
+
+    def _benchmark_comparison(
+        self, rows: list[dict[str, Any]], overall: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Best-effort alpha vs IHSG over the same first/last prediction window."""
+        if not rows:
+            return {}
+        try:
+            starts = sorted(str(r["bar_cutoff_timestamp"]) for r in rows)
+            start = pd.Timestamp(starts[0]).date().isoformat()
+            end = (pd.Timestamp.now() + pd.Timedelta(days=1)).date().isoformat()
+            df = yf.Ticker("^JKSE").history(start=start, end=end, interval="1d", auto_adjust=True)
+            if df is None or df.empty or len(df) < 2:
+                return {"symbol": "^JKSE", "note": "Data benchmark tidak tersedia"}
+            bench_ret = ((float(df["Close"].iloc[-1]) / float(df["Close"].iloc[0])) - 1.0) * 100.0
+            strat_ret = float(overall.get("cumulative_net_return_pct", 0.0))
+            return {
+                "symbol": "^JKSE",
+                "start": start,
+                "end": str(df.index[-1].date()),
+                "benchmark_return_pct": round(bench_ret, 2),
+                "strategy_return_pct": round(strat_ret, 2),
+                "alpha_pct": round(strat_ret - bench_ret, 2),
+                "note": "Perbandingan sederhana, bukan beta-adjusted.",
+            }
+        except Exception:
+            return {"symbol": "^JKSE", "note": "Gagal memuat benchmark"}
 
     def get_performance_summary(self, execution_mode: Optional[str] = None) -> dict[str, Any]:
         """Returns structured performance metrics across modes, tickers, setups, regimes, and versions."""
@@ -85,7 +127,7 @@ class PerformanceAnalyzer:
                 SELECT
                     a.analysis_id, a.ticker, a.timeframe, a.direction, a.execution_mode,
                     a.strategy_name, a.strategy_version, a.setup_type, a.ihsg_regime,
-                    a.calibrated_confidence, a.bar_cutoff_timestamp,
+                    a.calibrated_confidence, a.bar_cutoff_timestamp, a.sector,
                     o.evaluation_status, o.entry_filled, o.gross_return_pct,
                     o.net_return_pct, o.is_ambiguous, o.evaluated_at_wib
                 FROM analysis_history a
@@ -118,6 +160,18 @@ class PerformanceAnalyzer:
         by_setup = _group_metrics("setup_type")
         by_regime = _group_metrics("ihsg_regime")
         by_version = _group_metrics("strategy_version")
+        by_sector = _group_metrics("sector")
+        sector_exposure_pct: dict[str, float] = {}
+        if all_rows:
+            sector_counts: dict[str, int] = {}
+            for r in all_rows:
+                key = str(r.get("sector") or "UNKNOWN")
+                sector_counts[key] = sector_counts.get(key, 0) + 1
+            sector_exposure_pct = {
+                k: round(v / len(all_rows) * 100.0, 1) for k, v in sector_counts.items()
+            }
+
+        benchmark = self._benchmark_comparison(all_rows, overall)
 
         # Confidence Calibration Analysis (Brier Score & Bucket Comparison)
         resolved_buy = [
@@ -165,6 +219,9 @@ class PerformanceAnalyzer:
             "by_setup_type": by_setup,
             "by_ihsg_regime": by_regime,
             "by_strategy_version": by_version,
+            "by_sector": by_sector,
+            "sector_exposure_pct": sector_exposure_pct,
+            "benchmark": benchmark,
             "confidence_calibration": {
                 "brier_score": brier_score,
                 "buckets": calibration_buckets,
@@ -195,6 +252,7 @@ class PerformanceAnalyzer:
             f"• *Average Win / Loss (Bersih):* {ov['avg_win_net_pct']:+.2f}% / {ov['avg_loss_net_pct']:+.2f}%",
             f"• *Expectancy per Transaksi:* *{ov['expectancy_net_pct']:+.2f}%*",
             f"• *Profit Factor:* {ov['profit_factor']:.2f}",
+            f"• *Sharpe / Sortino (per trade):* {ov.get('sharpe_per_trade', 0.0):.2f} / {ov.get('sortino_per_trade', 0.0):.2f}",
             f"• *Maximum Drawdown:* {ov['max_drawdown_pct']:.2f}%",
             f"• *Total Return Bersih Kumulatif:* *{ov['cumulative_net_return_pct']:+.2f}%* (Kotor: {ov['cumulative_gross_return_pct']:+.2f}%)",
         ])
@@ -234,6 +292,19 @@ class PerformanceAnalyzer:
                     f"Exp={v_stat['expectancy_net_pct']:+.2f}%, MaxDD={v_stat['max_drawdown_pct']:.2f}%"
                 )
 
+        if summary.get("sector_exposure_pct"):
+            exposure = ", ".join(
+                f"{k}={v:.0f}%" for k, v in sorted(summary["sector_exposure_pct"].items(), key=lambda x: -x[1])
+            )
+            lines.append(f"\n🏭 *Eksposur Sektor (berdasarkan jumlah prediksi):* {exposure}")
+
+        bench = summary.get("benchmark") or {}
+        if bench.get("benchmark_return_pct") is not None:
+            lines.append(
+                f"\n📊 *Benchmark IHSG:* {bench['benchmark_return_pct']:+.2f}% | "
+                f"Strategi: {bench['strategy_return_pct']:+.2f}% | Alpha: *{bench['alpha_pct']:+.2f}%*"
+            )
+
         cal = summary["confidence_calibration"]
         if cal["brier_score"] is not None:
             lines.append(f"\n🎯 *Kalibrasi Confidence (Brier Score = {cal['brier_score']:.4f}):*")
@@ -257,6 +328,8 @@ class PerformanceAnalyzer:
         self,
         strategy_name: str = config.DEFAULT_STRATEGY_NAME,
         min_total_samples: int = 16,
+        execution_mode: Optional[str] = None,
+        strategy_version: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Evaluates whether a controlled parameter improvement is justified by historical data:
@@ -270,24 +343,36 @@ class PerformanceAnalyzer:
         current_tag = active_ver["version_tag"]
         current_params = dict(active_ver["parameters"])
 
+        where = [
+            "a.strategy_name = ?",
+            "a.direction = 'BUY'",
+            "o.entry_filled = 1",
+            "o.is_ambiguous = 0",
+            "o.evaluation_status LIKE 'RESOLVED_%'",
+        ]
+        params: list[Any] = [strategy_name]
+        if execution_mode:
+            where.append("a.execution_mode = ?")
+            params.append(execution_mode.upper())
+        if strategy_version:
+            where.append("a.strategy_version = ?")
+            params.append(strategy_version)
+
         with self.db.connect() as conn:
             rows = [
                 dict(r)
                 for r in conn.execute(
-                    """
+                    f"""
                     SELECT
                         a.analysis_id, a.raw_quant_score, a.setup_type, a.ihsg_regime,
-                        a.bar_cutoff_timestamp, o.net_return_pct, o.is_ambiguous, o.entry_filled, o.evaluation_status
+                        a.bar_cutoff_timestamp, a.execution_mode, a.strategy_version,
+                        o.net_return_pct, o.is_ambiguous, o.entry_filled, o.evaluation_status
                     FROM analysis_history a
                     INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
-                    WHERE a.strategy_name = ?
-                      AND a.direction = 'BUY'
-                      AND o.entry_filled = 1
-                      AND o.is_ambiguous = 0
-                      AND o.evaluation_status LIKE 'RESOLVED_%'
+                    WHERE {' AND '.join(where)}
                     ORDER BY a.bar_cutoff_timestamp ASC
                     """,
-                    (strategy_name,),
+                    tuple(params),
                 ).fetchall()
             ]
 

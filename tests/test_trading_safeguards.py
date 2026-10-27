@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pandas as pd
 import numpy as np
@@ -60,7 +62,11 @@ class TestTradingSafeguards(unittest.TestCase):
 
     def test_ai6_veto_defense(self):
         """Jika AI_6 (Akurasi 83%) menyarankan WAIT, konsensus BUY wajib di-veto menjadi WAIT."""
-        db = MemoryDatabase("data/agent_memory.db")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = MemoryDatabase(Path(tmp_dir) / "test_agent_memory.db")
+            self._run_ai6_veto_test(db)
+
+    def _run_ai6_veto_test(self, db):
         dates = pd.date_range(end="2026-10-23", periods=60)
         df_daily = pd.DataFrame(
             {

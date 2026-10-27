@@ -51,8 +51,8 @@ def run_scalping_audit():
 
     for tk_name in candidates:
         tk = yf.Ticker(tk_name)
-        df_1m = tk.history(period="5d", interval="1m", auto_adjust=False)
-        df_5m = tk.history(period="5d", interval="5m", auto_adjust=False)
+        df_1m = tk.history(period="5d", interval="1m", auto_adjust=True)
+        df_5m = tk.history(period="5d", interval="5m", auto_adjust=True)
         if df_5m is None or df_5m.empty:
             continue
 

@@ -21,6 +21,76 @@ from memory.learning_loop import LearningLoopOrchestrator
 from memory.performance import PerformanceAnalyzer
 
 
+def _analyze_with_panel(
+    orchestrator: LearningLoopOrchestrator,
+    snap: TechnicalSnapshot,
+    ihsg_info: dict,
+    timeframe: str,
+    horizon_bars: int,
+    horizon_minutes: int,
+    use_live_llm: bool,
+    news_context: str = "",
+) -> tuple[dict | None, dict | None]:
+    """Single decision layer: panel runs first, then one immutable prediction is saved."""
+    ctx = orchestrator.analyze_and_record_with_memory(
+        ticker=snap.ticker,
+        snap=snap,
+        ihsg_info=ihsg_info,
+        news_context=news_context,
+        timeframe=timeframe,
+        horizon_bars=horizon_bars,
+        horizon_minutes=horizon_minutes,
+        execution_mode=config.EXECUTION_MODE,
+        save_prediction=False,
+    )
+    if ctx is None:
+        return None, None
+
+    try:
+        panel = run_5_ai_panel_consensus(
+            snap=snap,
+            ihsg_info=ihsg_info,
+            mem_ctx=ctx,
+            db=orchestrator.db,
+            use_live_llm=use_live_llm,
+        )
+    except Exception:
+        panel = {
+            "votes": [],
+            "buy_count": 0,
+            "total_ai": 0,
+            "agreement_pct": 0.0,
+            "works_pct": 0.0,
+            "final_decision": "WAIT",
+            "verdict_label": "⚠️ Panel AI gagal dijalankan; keputusan memakai filter kuantitatif.",
+            "chief_summary": "Panel tidak tersedia, jadi guard kuantitatif/memori yang menentukan.",
+            "debate": {},
+        }
+
+    base = str(ctx.get("final_direction", "WAIT"))
+    panel_decision = str(panel.get("final_decision", "WAIT"))
+    if base == "AVOID":
+        final_decision = "AVOID"
+    elif base == "BUY" and panel_decision == "BUY":
+        final_decision = "BUY"
+    else:
+        final_decision = "WAIT"
+
+    if final_decision != panel_decision:
+        panel["final_decision"] = final_decision
+        panel["verdict_label"] = (
+            f"🔴 DITAHAN OLEH FILTER KUANTITATIF/MEMORI "
+            f"({panel['buy_count']}/{panel['total_ai']} AI Setuju — {panel['works_pct']:.1f}% Works)"
+        )
+        panel["chief_summary"] = (
+            f"Panel ingin {panel_decision}, tetapi guard strategi/memori menetapkan {final_decision}. "
+            "Keputusan yang disimpan adalah versi yang lebih konservatif."
+        )
+
+    ctx = orchestrator.record_final_prediction(ctx, final_decision, panel["votes"])
+    return ctx, panel
+
+
 def _get_gemini_client():
     api_key = config.GEMINI_API_KEY
     if not api_key or api_key.startswith("masukkan_"):
@@ -110,24 +180,17 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
     news_summary_str = "; ".join([n.get("title", "") for n in news_list[:3]])
     for s in top_picks:
         try:
-            ctx = orchestrator.analyze_and_record_with_memory(
-                ticker=s.ticker,
+            ctx, panel_res = _analyze_with_panel(
+                orchestrator=orchestrator,
                 snap=s,
                 ihsg_info=ihsg,
-                news_context=news_summary_str,
                 timeframe="15m",
                 horizon_bars=8,
                 horizon_minutes=120,
-                execution_mode=config.EXECUTION_MODE,
+                use_live_llm=False,
+                news_context=news_summary_str,
             )
-            if ctx:
-                panel_res = run_5_ai_panel_consensus(
-                    snap=s,
-                    ihsg_info=ihsg,
-                    mem_ctx=ctx,
-                    db=orchestrator.db,
-                    use_live_llm=False,
-                )
+            if ctx and panel_res:
                 d_snap = s.to_dict()
                 d_snap["final_direction"] = panel_res["final_decision"]
                 d_snap["calibrated_confidence"] = ctx["calibrated_confidence"]
@@ -162,7 +225,7 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             "meskipun di belakang layar Anda memakai perhitungan matematika canggih (VWAP, RSI, MACD, ATR) dan Database Memori Historis, "
             "SAAT MELAPOR KE BOS GUNAKAN 'BAHASA BAYI' / BAHASA SEHARI-HARI YANG SUPER GAMPANG DIPAHAMI ANAK KECIL!\n\n"
             "Peran 4 Karyawan AI:\n"
-            "1. 👨‍💻 *Bastian (Head of Macro & Berita Sektor)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan bukti pendukung, bukti penentang, serta hasil sidang 5 AI.\n"
+            "1. 👨‍💻 *Bastian (Head of Macro & Berita Sektor)*: Jelaskan fakta terukur vs interpretasi pakai analogi sederhana. Sebutkan bukti pendukung, bukti penentang, serta hasil sidang 6 AI.\n"
             "2. 👩‍💼 *Serena (VP of Screener & Volume Radar)*: Bandingkan BANYAK artikel dari `radar_perbandingan_berita_7_sektor_bei` (jangan cuma 1-2 artikel!). Jelaskan hukum sebab-akibat berita hari ini ke berbagai sektor (misal: kebijakan cukai rokok -> HMSP/GGRM/WIIM, suku bunga -> bank, harga emas/batu bara -> tambang, insentif -> properti/konsumer).\n"
             "3. 🛡️ *Damian (Chief Risk Officer / Penjaga Modal)*: Kasih panduan super jelas untuk:\n"
             "   - ⚡ *Peluang Cepat (Scalping / Intraday Hari Ini)*\n"
@@ -270,25 +333,23 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
 
     ihsg_info = get_ihsg_overview()
     news_str = "; ".join([n.get("title", "") for n in news_items[:3]])
-    mem_ctx = orchestrator.analyze_and_record_with_memory(
-        ticker=norm_ticker,
+    mem_ctx, panel_consensus = _analyze_with_panel(
+        orchestrator=orchestrator,
         snap=snap,
         ihsg_info=ihsg_info,
-        news_context=news_str,
         timeframe="15m",
         horizon_bars=8,
         horizon_minutes=120,
-        execution_mode=config.EXECUTION_MODE,
-    )
-
-    # Jalankan 5 AI Gratis secara paralel untuk mendapatkan masukan masing-masing + persentase kelayakan
-    panel_consensus = run_5_ai_panel_consensus(
-        snap=snap,
-        ihsg_info=ihsg_info,
-        mem_ctx=mem_ctx,
-        db=orchestrator.db,
         use_live_llm=True,
+        news_context=news_str,
     )
+    if panel_consensus is None:
+        panel_consensus = {
+            "votes": [], "buy_count": 0, "total_ai": 0, "agreement_pct": 0.0,
+            "works_pct": 0.0, "final_decision": snap.direction,
+            "verdict_label": "⚠️ Panel AI tidak tersedia", "chief_summary": "",
+            "debate": {},
+        }
     panel_section_md = format_panel_consensus_section(panel_consensus)
 
     payload = {
@@ -407,22 +468,17 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
     panel_by_ticker: dict[str, dict] = {}
     for s in top_3:
         try:
-            ctx = orchestrator.analyze_and_record_with_memory(
-                ticker=s.ticker,
+            ctx, panel = _analyze_with_panel(
+                orchestrator=orchestrator,
                 snap=s,
                 ihsg_info=ihsg_info,
                 timeframe="15m",
                 horizon_bars=8,
                 horizon_minutes=120,
-                execution_mode=config.EXECUTION_MODE,
-            )
-            panel_by_ticker[s.ticker] = run_5_ai_panel_consensus(
-                snap=s,
-                ihsg_info=ihsg_info,
-                mem_ctx=ctx,
-                db=orchestrator.db,
                 use_live_llm=False,
             )
+            if panel is not None:
+                panel_by_ticker[s.ticker] = panel
         except Exception:
             pass
 
@@ -445,7 +501,7 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
         )
         p_res = panel_by_ticker.get(s.ticker)
         voting_line = (
-            f"   • 🗳️ *Suara 5 AI:* *{p_res['buy_count']}/{p_res['total_ai']} AI Setuju Beli* (*{p_res['works_pct']:.1f}% Works*) ➡️ {p_res['final_decision']}"
+            f"   • 🗳️ *Suara 6 AI:* *{p_res['buy_count']}/{p_res['total_ai']} AI Setuju Beli* (*{p_res['works_pct']:.1f}% Works*) ➡️ {p_res['final_decision']}"
             if p_res
             else f"   • 🗳️ *Keputusan:* {s.direction}"
         )
@@ -658,7 +714,7 @@ def get_ticker_memory_report(ticker_input: str) -> str:
 
 
 def get_weekly_ai_report() -> str:
-    """Menjalankan siklus evaluasi terbaru lalu menyusun Rapor Mingguan 5 AI."""
+    """Menjalankan siklus evaluasi terbaru lalu menyusun Rapor Mingguan 6 AI."""
     orchestrator = LearningLoopOrchestrator()
     try:
         orchestrator.run_evaluation_and_learning_cycle()
@@ -669,7 +725,7 @@ def get_weekly_ai_report() -> str:
 
 def swap_panel_ai_model(args: list[str]) -> str:
     """
-    Mengganti salah satu dari 5 AI di panel dengan model AI gratis lain,
+    Mengganti salah satu dari 6 AI di panel dengan model AI gratis lain,
     atau menampilkan daftar model jika dipanggil tanpa argumen.
     """
     orchestrator = LearningLoopOrchestrator()
@@ -678,7 +734,7 @@ def swap_panel_ai_model(args: list[str]) -> str:
     if not args:
         slots = db.get_ai_panel_registry()
         lines = [
-            "🤖 *SUSUNAN 5 AI PANELIS SAAT INI:*",
+            "🤖 *SUSUNAN 6 AI PANELIS SAAT INI:*",
             "━━━━━━━━━━━━━━━━━━━━━━",
         ]
         for s in slots:
@@ -701,14 +757,14 @@ def swap_panel_ai_model(args: list[str]) -> str:
             "• `/ganti_ai AI_3 gemini-3.8-flash`",
             "• `/ganti_ai AI_2 gemma-4-26b-a4b-it`",
             "• `/ganti_ai AI_4 groq:llama-3.3-70b-versatile`",
-            "• `/ganti_ai reset` _(kembalikan 5 AI ke setelan pabrik)_",
+            "• `/ganti_ai reset` _(kembalikan 6 AI ke setelan pabrik)_",
         ])
         return "\n".join(lines)
 
     first = args[0].strip().lower()
     if first == "reset":
         db.reset_ai_panel_registry()
-        return "✅ *Berhasil!* Susunan ke-5 AI Panelis sudah dikembalikan ke setelan awal."
+        return "✅ *Berhasil!* Susunan ke-6 AI Panelis sudah dikembalikan ke setelan awal."
 
     if len(args) < 2:
         return "⚠️ Format kurang lengkap. Contoh: `/ganti_ai AI_3 gemini-3.8-flash` atau ketik `/ganti_ai` untuk melihat daftar model."
@@ -758,22 +814,18 @@ def generate_sectoral_news_catalyst_report() -> str:
     sector_stock_picks = []
     for s in snaps[:4]:
         try:
-            ctx = orchestrator.analyze_and_record_with_memory(
-                ticker=s.ticker,
+            ctx, panel = _analyze_with_panel(
+                orchestrator=orchestrator,
                 snap=s,
                 ihsg_info=ihsg,
                 timeframe="15m",
                 horizon_bars=16,
                 horizon_minutes=240,
-                execution_mode=config.EXECUTION_MODE,
-            )
-            panel = run_5_ai_panel_consensus(
-                snap=s,
-                ihsg_info=ihsg,
-                mem_ctx=ctx,
-                db=orchestrator.db,
                 use_live_llm=False,
             )
+            if panel is None:
+                sector_stock_picks.append(s.to_dict())
+                continue
             d = s.to_dict()
             d["panel_5_ai"] = f"{panel['buy_count']}/{panel['total_ai']} AI Setuju ({panel['works_pct']:.1f}% Works)"
             d["vonis_hakim"] = panel["verdict_label"]
@@ -829,7 +881,7 @@ def generate_sectoral_news_catalyst_report() -> str:
             code = str(sp.get("ticker", "")).replace(".JK", "")
             lines.extend([
                 f"\n📌 *{code}* — Harga: *Rp {sp.get('current_price', 0):,.0f}* | Tren Harian: *{sp.get('daily_trend', '')}*",
-                f"   • 🗳️ *Suara 5 AI:* {sp.get('panel_5_ai', '-')}",
+                f"   • 🗳️ *Suara 6 AI:* {sp.get('panel_5_ai', '-')}",
                 f"   • 🛒 *Area Cicil Beli:* Rp {sp.get('entry_low', 0):,.0f} – Rp {sp.get('entry_high', 0):,.0f}",
                 f"   • 🎯 *Target Jual (TP1 / TP2):* Rp {sp.get('take_profit_1', 0):,.0f} / Rp {sp.get('take_profit_2', 0):,.0f}",
                 f"   • 🛑 *Rem Darurat (SL):* < Rp {sp.get('stop_loss', 0):,.0f}",

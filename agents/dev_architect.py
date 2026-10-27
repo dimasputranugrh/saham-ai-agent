@@ -35,12 +35,12 @@ FORBIDDEN_PATHS = {".env", ".git"}
 
 
 def is_authorized_owner(chat_id: int | str | None) -> bool:
-    """Memastikan hanya pemilik resmi (TELEGRAM_CHAT_ID Bos) yang boleh memakai /agy dan /upgrade."""
+    """Fail-closed: tanpa TELEGRAM_CHAT_ID yang valid, tidak ada yang dianggap owner."""
     if chat_id is None:
-        return True
+        return False
     owner_id = str(config.TELEGRAM_CHAT_ID or "").strip()
     if not owner_id or owner_id.startswith("masukkan_"):
-        return True
+        return False
     return str(chat_id).strip() == owner_id
 
 
@@ -135,7 +135,7 @@ def _call_architect_llm(
     system_prompt: str, user_prompt: str, temperature: float = 0.15, effort: str = "medium"
 ) -> tuple[Optional[str], str]:
     """
-    Memanggil otak AI Architect untuk /agy dan /upgrade dari Telegram:
+    Memanggil otak AI Architect untuk /tanya dan /upgrade dari Telegram:
     - Prioritas 0 (Laptop nyala / WSL): Antigravity CLI `gemini-3.8-flash-{low|medium|high}`
     - Prioritas 1 (Cloud / Fallback): Google `gemini-3.6-flash`
     - Prioritas 2 (Cloud / Fallback): OpenAI `openai/gpt-oss-120b` (via Groq)
@@ -143,7 +143,7 @@ def _call_architect_llm(
     # 0. Laptop nyala: Gemini 3.8 Flash via Antigravity CLI, tingkat berpikir sesuai pertanyaan
     agy_out, agy_model = _call_local_agy(f"{system_prompt}\n\n{user_prompt}", effort=effort)
     if agy_out:
-        return agy_out, f"{agy_model} (via Antigravity CLI)"
+        return agy_out, f"{agy_model} (via CLI Lokal)"
 
     # 1. Coba Gemini 3.6 Flash / 3 Flash Preview
     gem_key = config.GEMINI_API_KEY
@@ -240,17 +240,17 @@ def _select_relevant_files(query: str, max_files: int = 5) -> dict[str, str]:
 
 def ask_project_architect(question: str, chat_id: int | str | None = None) -> str:
     """
-    Menjawab pertanyaan teknis/arsitektur tentang project saham-ai-agent dari Telegram (/agy).
-    Bisa berjalan di WSL (via Antigravity CLI atau LLM Architect) maupun di GitHub Actions Cloud!
+    Menjawab pertanyaan teknis/arsitektur tentang project saham-ai-agent dari Telegram (/tanya).
+    Bisa berjalan di WSL (via CLI Lokal atau LLM Architect) maupun di GitHub Actions Cloud!
     """
     if not is_authorized_owner(chat_id):
-        return "⛔ Akses ditolak. Perintah `/agy` hanya bisa dijalankan oleh pemilik project."
+        return "⛔ Akses ditolak. Perintah `/tanya` hanya bisa dijalankan oleh pemilik project."
 
     if not question.strip():
         return (
-            "🤖 *Jembatan Telegram ↔ Antigravity Architect Aktif!*\n\n"
+            "🤖 *Jembatan Telegram ↔ AI Architect Aktif!*\n\n"
             "Bos bisa bertanya apa saja tentang isi project ini atau meminta upgrade fitur langsung dari Telegram:\n"
-            "• *Tanya Project:* `/agy jelaskan cara kerja 5 AI dan database memori di project ini`\n"
+            "• *Tanya Project:* `/tanya jelaskan cara kerja 6 AI dan database memori di project ini`\n"
             "• *Upgrade Kode Otomatis:* `/upgrade tambahkan saham BRIS.JK ke daftar SECTOR_MAP di config.py`\n\n"
             "_Berfungsi penuh baik saat Laptop Nyala (WSL) maupun saat Laptop Mati (GitHub Cloud)!_"
         )
@@ -260,7 +260,7 @@ def ask_project_architect(question: str, chat_id: int | str | None = None) -> st
     files_ctx = _select_relevant_files(question, max_files=5)
 
     sys_prompt = (
-        "Anda adalah Antigravity AI Architect yang menjaga project `saham-ai-agent` milik Bos Dimas.\n"
+        "Anda adalah AI Architect yang menjaga project `saham-ai-agent` milik Bos Dimas.\n"
         "Jawab pertanyaan Bos tentang project ini dengan bahasa Indonesia yang ramah, jelas, dan mudah dipahami ('Bahasa Bayi' bila menyangkut istilah rumit), "
         "namun tetap menyebutkan nama file dan fungsi yang relevan secara akurat.\n"
         f"Saat ini Anda menjawab dari lingkungan: {mode_env}."
@@ -274,7 +274,7 @@ def ask_project_architect(question: str, chat_id: int | str | None = None) -> st
     ans, used_model = _call_architect_llm(sys_prompt, user_prompt, temperature=0.2, effort=effort)
     if ans:
         return (
-            f"🤖 *Antigravity Architect ({mode_env})*\n"
+            f"🤖 *AI Architect ({mode_env})*\n"
             f"🧠 _Model: `{used_model}` | Tingkat berpikir: `{effort}`_\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             f"{ans}"

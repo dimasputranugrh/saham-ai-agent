@@ -1,12 +1,15 @@
 import json
+import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 import urllib.request
 import pandas as pd
 from http.server import HTTPServer
 
+import config
 import main
 from analyzer.bandarmologi import analyze_bandarmologi_footprint
 from bot.chart_view import render_tradingview_chart_html
@@ -16,6 +19,19 @@ from bot.telegram_bot import get_main_menu_keyboard, get_scan_keyboard, get_port
 class TestAdvancedFeatures(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Isolasi semua file state agar test tidak pernah menulis ke data produksi.
+        cls.tmp_dir = tempfile.TemporaryDirectory()
+        cls._old_portfolio_file = config.PORTFOLIO_FILE
+        cls._old_watchlist_file = config.WATCHLIST_FILE
+        cls._old_ledger_file = config.TRADE_LEDGER_FILE
+        cls._old_enable_demo = config.ENABLE_DEMO_TRADING
+        cls._old_api_token = config.API_AUTH_TOKEN
+        config.PORTFOLIO_FILE = Path(cls.tmp_dir.name) / "portfolio.json"
+        config.WATCHLIST_FILE = Path(cls.tmp_dir.name) / "watchlist.json"
+        config.TRADE_LEDGER_FILE = Path(cls.tmp_dir.name) / "trade_ledger.json"
+        config.ENABLE_DEMO_TRADING = True
+        config.API_AUTH_TOKEN = ""
+
         # Start main.HealthCheckHandler on a free test port in a background thread
         cls.port = 18889
         cls.server = HTTPServer(("127.0.0.1", cls.port), main.HealthCheckHandler)
@@ -27,6 +43,12 @@ class TestAdvancedFeatures(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        config.PORTFOLIO_FILE = cls._old_portfolio_file
+        config.WATCHLIST_FILE = cls._old_watchlist_file
+        config.TRADE_LEDGER_FILE = cls._old_ledger_file
+        config.ENABLE_DEMO_TRADING = cls._old_enable_demo
+        config.API_AUTH_TOKEN = cls._old_api_token
+        cls.tmp_dir.cleanup()
 
     def test_bandarmologi_accumulation(self):
         """Uji deteksi akumulasi bandarmologi saat CMF tinggi dan harga tutup di atas."""
@@ -164,7 +186,7 @@ class TestAdvancedFeatures(unittest.TestCase):
 
     @patch("analyzer.technical.analyze_ticker_quant")
     def test_http_api_buy_demo(self, mock_quant):
-        """Uji endpoint API /api/portfolio/buy-demo."""
+        """Uji endpoint API /api/portfolio/buy-demo tanpa menyentuh portfolio asli."""
         from unittest.mock import MagicMock
         snap = MagicMock()
         snap.ticker = "BBCA.JK"
@@ -175,12 +197,16 @@ class TestAdvancedFeatures(unittest.TestCase):
         mock_quant.return_value = snap
 
         url = f"http://127.0.0.1:{self.port}/api/portfolio/buy-demo?ticker=BBCA&lots=10"
-        with urllib.request.urlopen(url, timeout=5) as response:
+        request = urllib.request.Request(url, method="POST")
+        with urllib.request.urlopen(request, timeout=5) as response:
             self.assertEqual(response.status, 200)
             data = json.loads(response.read().decode())
             self.assertEqual(data["status"], "ok")
             self.assertEqual(data["ticker"], "BBCA")
             self.assertEqual(data["lots"], 10)
+
+        saved = json.loads(Path(config.PORTFOLIO_FILE).read_text(encoding="utf-8"))
+        self.assertEqual(saved["BBCA.JK"]["lots"], 10)
 
 
 if __name__ == "__main__":

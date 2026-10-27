@@ -1,7 +1,17 @@
 import concurrent.futures
+import re
+import time
 from typing import Any
 from urllib.parse import quote_plus
 import feedparser
+
+_RSS_CACHE: dict[tuple[str, str, int], tuple[float, list[dict[str, str]]]] = {}
+_RSS_CACHE_TTL_SECONDS = 900
+
+
+def _strip_html(raw: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", raw or "")
+    return re.sub(r"\s+", " ", text).strip()
 
 # Peta Lengkap Seluruh Sektor BEI/IDX, Emiten Utama, dan Hukum Sebab-Akibat Katalis Berita
 SECTOR_CATALYST_MAP: dict[str, dict[str, Any]] = {
@@ -86,20 +96,42 @@ SECTOR_CATALYST_MAP: dict[str, dict[str, Any]] = {
 
 
 def _fetch_rss_query(query_str: str, when_window: str = "3d", limit: int = 8) -> list[dict[str, str]]:
+    key = (query_str, when_window, limit)
+    cached = _RSS_CACHE.get(key)
+    if cached and time.time() - cached[0] < _RSS_CACHE_TTL_SECONDS:
+        return list(cached[1])
+
     q = quote_plus(query_str)
     url = f"https://news.google.com/rss/search?q={q}+when:{when_window}&hl=id&gl=ID&ceid=ID:id"
     items: list[dict[str, str]] = []
+    seen: set[str] = set()
     try:
         feed = feedparser.parse(url)
         for entry in feed.entries[:limit]:
             title = str(entry.get("title", "")).strip()
             source = str(entry.get("source", {}).get("title", "Media Pasar")).strip()
             pub = str(entry.get("published", "")).strip()
-            if title:
-                items.append({"title": title, "source": source, "published": pub})
+            link = str(entry.get("link", "")).strip()
+            summary = _strip_html(str(entry.get("summary", "")))[:600]
+            if not title:
+                continue
+            dedup_key = re.sub(r"[^a-z0-9]", "", title.lower())[:60]
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            items.append(
+                {
+                    "title": title,
+                    "source": source,
+                    "published": pub,
+                    "link": link,
+                    "summary": summary,
+                }
+            )
     except Exception:
         pass
-    return items
+    _RSS_CACHE[key] = (time.time(), items)
+    return list(items)
 
 
 def fetch_market_news_indonesia(max_items: int = 12) -> list[dict[str, str]]:
@@ -169,7 +201,7 @@ def scan_all_sectors_news_and_catalysts(articles_per_sector: int = 6) -> list[di
             neg_hits = 0
 
             for a in articles:
-                t_low = a["title"].lower()
+                t_low = (a["title"] + " " + a.get("summary", "")).lower()
                 short_k = t_low[:45]
                 if short_k in seen:
                     continue
@@ -209,6 +241,19 @@ def scan_all_sectors_news_and_catalysts(articles_per_sector: int = 6) -> list[di
                     "top_articles": unique_arts[:4],
                 }
             )
+
+    # Deduplicate the same headline across sectors, then sort by catalyst strength.
+    seen_global: set[str] = set()
+    for res in results:
+        kept: list[dict[str, str]] = []
+        for a in res["top_articles"]:
+            key = re.sub(r"[^a-z0-9]", "", a["title"].lower())[:60]
+            if key in seen_global:
+                continue
+            seen_global.add(key)
+            kept.append(a)
+        res["cross_sector_duplicates_removed"] = len(res["top_articles"]) - len(kept)
+        res["top_articles"] = kept
 
     # Urutkan sektor dengan berita paling aktif & sinyal katalis paling kuat di atas
     results.sort(

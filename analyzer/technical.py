@@ -198,6 +198,10 @@ class TechnicalSnapshot:
     recommended_lots: int = 1
     trailing_stop_plan: str = "Aktif jika gain >= +1.5% (kunci modal BEP +0.5%)"
     bandarmologi_summary: str = "Netral"
+    adv_20_value_idr: float = 0.0
+    liquidity_note: str = ""
+    ara_level: float = 0.0
+    arb_level: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -211,11 +215,11 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     is_idx = ticker.upper().endswith(".JK")
     try:
         tk = yf.Ticker(ticker)
-        df_daily = tk.history(period="9mo", interval="1d", auto_adjust=False)
+        df_daily = tk.history(period="2y", interval="1d", auto_adjust=True)
         if df_daily is None or df_daily.empty or len(df_daily) < 30:
             return None
 
-        df_intra = tk.history(period="5d", interval="15m", auto_adjust=False)
+        df_intra = tk.history(period="5d", interval="15m", auto_adjust=True)
     except Exception:
         return None
 
@@ -227,9 +231,10 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     close_d = df_daily["Close"]
     df_daily["EMA20"] = close_d.ewm(span=20, adjust=False).mean()
     df_daily["EMA50"] = close_d.ewm(span=50, adjust=False).mean()
+    sma200_is_fallback = len(close_d) < 200
     df_daily["SMA200"] = (
         close_d.rolling(200).mean()
-        if len(close_d) >= 200
+        if not sma200_is_fallback
         else close_d.ewm(span=100, adjust=False).mean()
     )
     df_daily["RSI"] = compute_rsi(close_d, 14)
@@ -457,6 +462,16 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     spread_pct = round((tick_sz / current_price) * 100.0, 4) if current_price > 0 else 0.0
     total_fee_slip_pct = config.FEE_BUY_PCT + config.FEE_SELL_PCT + config.DEFAULT_SLIPPAGE_PCT
     atr_pct = round((atr_val / current_price) * 100.0, 2) if current_price > 0 else 0.0
+    adv_20_shares = float(df_daily["Volume"].tail(20).mean()) if len(df_daily) else 0.0
+    adv_20_value_idr = round(adv_20_shares * current_price, 0)
+    liquidity_note = (
+        "Likuid (ADV20 >= Rp 1 miliar/hari)"
+        if adv_20_value_idr >= 1_000_000_000
+        else f"Likuiditas tipis (ADV20 ~Rp {adv_20_value_idr:,.0f}/hari); pakai lot kecil & hindari kejar harga."
+    )
+    # shortcut: simplified IDX 7% ARA/ARB, update when exchange rules change.
+    ara_level = round_idx_tick(prev_close * 1.07, is_idx) if is_idx else round(prev_close * 1.07, 2)
+    arb_level = round_idx_tick(prev_close * 0.93, is_idx) if is_idx else round(prev_close * 0.93, 2)
 
     supporting_ev: list[str] = list(signals)
     opposing_ev: list[str] = []
@@ -512,6 +527,19 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         score -= 10
         opposing_ev.append(
             f"Volatilitas ATR harian terlalu liar ({atr_pct:.1f}% dari harga). Risiko slippage & gap down ekstrem."
+        )
+    if adv_20_value_idr > 0 and adv_20_value_idr < 1_000_000_000:
+        score -= 8
+        opposing_ev.append(liquidity_note)
+    if current_price >= ara_level * 0.995:
+        score -= 12
+        opposing_ev.append(
+            f"Harga sudah mendekati batas ARA estimasi (Rp {ara_level:,.0f}); risiko tidak bisa masuk atau reversal."
+        )
+    if current_price <= arb_level * 1.005:
+        score -= 15
+        opposing_ev.append(
+            f"Harga mendekati batas ARB estimasi (Rp {arb_level:,.0f}); tunggu stabil, jangan tangkap pisau jatuh."
         )
 
     score = int(max(5, min(98, score)))
@@ -594,6 +622,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         f"VWAP 15m={round_idx_tick(intra_vwap, is_idx):.0f}, EMA9 15m={round_idx_tick(intra_ema9, is_idx):.0f}, EMA21 15m={round_idx_tick(intra_ema21, is_idx):.0f}",
         f"EMA20 Daily={round_idx_tick(ema20_d, is_idx):.0f}, EMA50 Daily={round_idx_tick(ema50_d, is_idx):.0f}, RSI Daily={rsi_d:.1f}, RSI 15m={intra_rsi:.1f}",
         f"Volume Ratio={max_vol_surge:.2f}x, ATR(14)={atr_val:.1f}, Tick Size={tick_sz:.0f} ({spread_pct:.2f}%)",
+        f"ADV20≈Rp {adv_20_value_idr:,.0f}/hari; ARA/ARB estimasi 7%: Rp {ara_level:,.0f} / Rp {arb_level:,.0f}",
     ]
     interpretations = [
         f"Tren Harian: {daily_trend}; Status Intraday: {intraday_status}",
@@ -640,6 +669,15 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         action_label = "AVOID / HINDARI DULU (Tekanan Jual Masih Dominan)"
         best_window = "Hindari beli baru; tunggu struktur harga membaik"
         best_sell = f"Jika masih pegang saham ini dan jam 15:30 WIB harganya di bawah Rp {stop_loss:,.0f}, segera jual agar tidak nyangkut."
+
+    validation_notes = "Valid OHLCV Daily + 15m Intraday snapshot"
+    data_is_valid = True
+    if sma200_is_fallback:
+        data_is_valid = False
+        validation_notes = (
+            f"SMA200 fallback ke EMA100 karena histori harian hanya {len(df_daily)} bar (<200). "
+            "Tren jangka panjang belum terverifikasi."
+        )
 
     return TechnicalSnapshot(
         ticker=ticker.upper(),
@@ -700,13 +738,17 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         estimated_risk_pct=est_risk_pct,
         estimated_gross_return_pct=est_gross_ret_pct,
         estimated_net_return_pct=est_net_ret_pct,
-        data_is_valid=True,
-        validation_notes="Valid OHLCV Daily + 15m Intraday snapshot",
+        data_is_valid=data_is_valid,
+        validation_notes=validation_notes,
         cmf_20=cmf_val,
         foreign_flow_status=foreign_flow_status,
         recommended_lots=recommended_lots,
         trailing_stop_plan=trailing_plan,
         bandarmologi_summary=bandar_summary,
+        adv_20_value_idr=adv_20_value_idr,
+        liquidity_note=liquidity_note,
+        ara_level=ara_level,
+        arb_level=arb_level,
     )
 
 
@@ -741,6 +783,55 @@ def get_ihsg_overview() -> dict[str, Any]:
         }
     except Exception as e:
         return {"status": f"Gagal memuat IHSG: {e}", "regime": "NEUTRAL"}
+
+
+def get_ihsg_regime_as_of(
+    as_of: str | pd.Timestamp,
+    df_daily: Optional[pd.DataFrame] = None,
+) -> dict[str, Any]:
+    """Historical IHSG regime for a cutoff, so backtests do not use today's regime."""
+    try:
+        if df_daily is None:
+            df_daily = yf.Ticker("^JKSE").history(period="3mo", interval="1d")
+        if df_daily is None or df_daily.empty or len(df_daily) < 2:
+            return {"regime": "NEUTRAL", "status": "Data IHSG historis tidak tersedia"}
+
+        df = df_daily.copy()
+        cutoff = pd.Timestamp(as_of)
+        if cutoff.tzinfo is not None:
+            cutoff = cutoff.tz_convert("Asia/Jakarta").tz_localize(None)
+        cutoff = cutoff.normalize()
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert("Asia/Jakarta").tz_localize(None)
+        visible = df[df.index.normalize() <= cutoff]
+        if len(visible) < 2:
+            return {"regime": "NEUTRAL", "status": "Belum ada data IHSG pada cutoff"}
+
+        visible = visible.copy()
+        visible["EMA20"] = visible["Close"].ewm(span=20, adjust=False).mean()
+        last = visible.iloc[-1]
+        prev_close = float(visible.iloc[-2]["Close"])
+        close = float(last["Close"])
+        chg = ((close - prev_close) / prev_close) * 100.0 if prev_close > 0 else 0.0
+        ema20 = float(last["EMA20"])
+        if close >= ema20 and chg >= 0:
+            regime = "BULLISH_UPTREND"
+        elif close >= ema20 and chg < 0:
+            regime = "BULLISH_PULLBACK"
+        elif close < ema20 and chg >= 0:
+            regime = "BEARISH_RECOVERY"
+        else:
+            regime = "BEARISH_DOWNTREND"
+        return {
+            "index": "IHSG (^JKSE)",
+            "last_close": round(close, 2),
+            "change_pct": round(chg, 2),
+            "above_ema20": close >= ema20,
+            "regime": regime,
+            "summary": f"IHSG {last.name.date()} di {close:,.2f} ({chg:+.2f}%) [Rezim: {regime}]",
+        }
+    except Exception as e:
+        return {"regime": "NEUTRAL", "status": f"Gagal memuat IHSG historis: {e}"}
 
 
 def scan_watchlist_quant(tickers: list[str]) -> list[TechnicalSnapshot]:
