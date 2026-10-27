@@ -39,6 +39,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger("SahamAIBot")
+# Jangan log URL API Telegram: URL itu memuat token bot.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Menu command bawaan Telegram. /agy sengaja tidak didaftarkan; penggantinya /tanya.
 BOT_COMMANDS = [
