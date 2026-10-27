@@ -7,7 +7,7 @@ import pandas as pd
 import yfinance as yf
 
 import config
-from memory.database import MemoryDatabase, now_wib_iso
+from memory.database import MemoryDatabase, now_wib_iso, same_session_sql
 from memory.evaluator import compute_max_drawdown_pct
 
 
@@ -133,9 +133,10 @@ class PerformanceAnalyzer:
                 FROM analysis_history a
                 INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
             """
+            query += f" WHERE {same_session_sql()}"
             params: tuple[Any, ...] = ()
             if execution_mode:
-                query += " WHERE a.execution_mode = ?"
+                query += " AND a.execution_mode = ?"
                 params = (execution_mode.upper(),)
             query += " ORDER BY a.bar_cutoff_timestamp ASC"
             all_rows = [dict(r) for r in conn.execute(query, params).fetchall()]
@@ -349,6 +350,7 @@ class PerformanceAnalyzer:
             "o.entry_filled = 1",
             "o.is_ambiguous = 0",
             "o.evaluation_status LIKE 'RESOLVED_%'",
+            same_session_sql(),
         ]
         params: list[Any] = [strategy_name]
         if execution_mode:

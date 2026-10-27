@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time, timedelta
 from typing import Any, Optional
 import numpy as np
 import pandas as pd
@@ -25,6 +25,38 @@ from memory.performance import PerformanceAnalyzer
 from memory.retrieval import MemoryRetriever
 
 WIB = pytz.timezone(config.TIMEZONE)
+
+
+def remaining_intraday_bars(
+    after_ts: str | datetime | pd.Timestamp,
+    timeframe: str = "15m",
+    ticker: str = "",
+) -> int:
+    """Count remaining IDX session bars after `after_ts` until the 16:00 close.
+
+    Lunch break (12:00-13:30) is skipped. Non-IDX symbols return a large number
+    because they do not follow the IDX intraday session.
+    """
+    if not str(ticker).upper().endswith(".JK") or not str(timeframe).endswith("m"):
+        return 10**6
+    try:
+        bar_minutes = int(str(timeframe)[:-1])
+    except ValueError:
+        return 10**6
+    if bar_minutes <= 0:
+        return 10**6
+
+    ts = pd.Timestamp(after_ts)
+    ts = ts.tz_localize(WIB) if ts.tzinfo is None else ts.tz_convert(WIB)
+    day = ts.normalize()
+    freq = f"{bar_minutes}min"
+    morning = pd.date_range(day + pd.Timedelta(hours=9), day + pd.Timedelta(hours=12), freq=freq)
+    afternoon = pd.date_range(day + pd.Timedelta(hours=13, minutes=30), day + pd.Timedelta(hours=16), freq=freq)
+    return sum(
+        1
+        for bar in list(morning) + list(afternoon)
+        if bar > ts and (bar.time() < dt_time(12, 0) or bar.time() >= dt_time(13, 30))
+    )
 
 
 class LearningLoopOrchestrator:
@@ -128,6 +160,14 @@ class LearningLoopOrchestrator:
             final_direction = "WAIT"
             opposing_ev.append(
                 f"Skor kuantitatif ({snap.quant_score}) di bawah ambang minimal strategi v{strat_ver_tag} ({min_score_param})."
+            )
+
+        bars_left = remaining_intraday_bars(datetime.now(WIB), timeframe, snap.ticker)
+        if final_direction == "BUY" and bars_left < int(horizon_bars):
+            final_direction = "WAIT"
+            opposing_ev.append(
+                f"JENDELA INTRADAY TIDAK CUKUP: tersisa {bars_left} bar sebelum penutupan, "
+                f"sedangkan horizon butuh {horizon_bars} bar. BUY ditahan agar tidak menjadi posisi overnight."
             )
 
         # Step 4: Save Market Snapshot
@@ -342,6 +382,9 @@ class LearningLoopOrchestrator:
                 # STRICT CAUSAL SLICE: only bars up to `idx` (inclusive) are visible!
                 visible = df.iloc[: idx + 1].copy()
                 cutoff_ts = visible.index[-1]
+                # Only train on samples whose horizon fits inside the same IDX session.
+                if remaining_intraday_bars(cutoff_ts, timeframe, ticker) < horizon_bars:
+                    continue
                 ihsg_info = get_ihsg_regime_as_of(cutoff_ts, ihsg_daily)
                 ihsg_regime = str(ihsg_info.get("regime", "NEUTRAL"))
                 as_of = cutoff_ts.isoformat()

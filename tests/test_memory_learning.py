@@ -11,7 +11,7 @@ import config
 from broker.stockbit import execute_stockbit_order
 from memory.database import MemoryDatabase
 from memory.evaluator import OutcomeEvaluator, compute_max_drawdown_pct
-from memory.learning_loop import LearningLoopOrchestrator
+from memory.learning_loop import LearningLoopOrchestrator, remaining_intraday_bars
 from memory.performance import PerformanceAnalyzer
 from memory.retrieval import MemoryRetriever
 
@@ -46,6 +46,7 @@ class TestPersistentMemoryAndLearningSystem(unittest.TestCase):
         db: MemoryDatabase,
         ticker: str = "TLKM.JK",
         cutoff_dt: datetime | None = None,
+        created_dt: datetime | None = None,
         direction: str = "BUY",
         setup_type: str = "VWAP_BREAKOUT_UPTREND",
         ihsg_regime: str = "BEARISH_RECOVERY",
@@ -83,7 +84,7 @@ class TestPersistentMemoryAndLearningSystem(unittest.TestCase):
         analysis_id = db.save_analysis_prediction(
             {
                 "snapshot_id": snap_id,
-                "created_at_wib": cutoff_dt.isoformat(),
+                "created_at_wib": (created_dt or cutoff_dt).isoformat(),
                 "bar_cutoff_timestamp": cutoff_dt.isoformat(),
                 "ticker": ticker,
                 "timeframe": "15m",
@@ -301,7 +302,12 @@ class TestPersistentMemoryAndLearningSystem(unittest.TestCase):
         with self.db.connect() as conn:
             row = dict(conn.execute("SELECT * FROM analysis_history WHERE analysis_id = ?", (aid,)).fetchone())
         res = self.evaluator.evaluate_prediction_with_bars(row, bars_partial)
-        self.assertIsNone(res)
+        # The session is over, so the evaluator must close the trade that day
+        # instead of waiting for tomorrow's bars.
+        self.assertIsNotNone(res)
+        self.assertEqual(res["evaluation_status"], "RESOLVED_TIME_EXIT")
+        self.assertEqual(res["bars_evaluated"], 1)
+        self.assertTrue(str(res["exit_timestamp"]).startswith("2026-10-21"))
 
     # 9. Test pencegahan data leakage & Controlled Strategy Improvement
     def test_9_zero_future_data_leakage_and_controlled_improvement(self):
@@ -394,6 +400,147 @@ class TestPersistentMemoryAndLearningSystem(unittest.TestCase):
         rb = self.perf.rollback_strategy_version()
         self.assertTrue(rb["rolled_back"])
         self.assertEqual(rb["active_version"], "1.0.0")
+
+    # 12. Same-day horizon: next-day bars must never resolve a late entry
+    def test_12_evaluator_never_uses_next_day_bars(self):
+        t0 = WIB.localize(datetime(2026, 10, 21, 14, 45, 0))
+        _, aid = self._create_sample_snapshot_and_prediction(
+            self.db, cutoff_dt=t0, horizon_bars=6
+        )
+        next_open = WIB.localize(datetime(2026, 10, 22, 9, 0, 0))
+        idx = [t0 + timedelta(minutes=15 * i) for i in range(1, 6)] + [next_open]
+        bars = pd.DataFrame(
+            [
+                (2100, 2110, 2095, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2100, 2500, 2090, 2400, 100000),  # next day: must be ignored
+            ],
+            index=pd.DatetimeIndex(idx),
+            columns=["Open", "High", "Low", "Close", "Volume"],
+        )
+        with self.db.connect() as conn:
+            row = dict(conn.execute("SELECT * FROM analysis_history WHERE analysis_id = ?", (aid,)).fetchone())
+        out = self.evaluator.evaluate_prediction_with_bars(row, bars)
+        self.assertIsNotNone(out)
+        self.assertEqual(out["evaluation_status"], "RESOLVED_TIME_EXIT")
+        self.assertEqual(out["bars_evaluated"], 5)
+        self.assertTrue(str(out["exit_timestamp"]).startswith("2026-10-21"))
+
+    # 13. A prediction recorded after the close has no same-day bars left
+    def test_13_after_close_prediction_is_not_evaluated_next_day(self):
+        t0 = WIB.localize(datetime(2026, 10, 21, 16, 0, 0))
+        _, aid = self._create_sample_snapshot_and_prediction(
+            self.db, cutoff_dt=t0, horizon_bars=6
+        )
+        next_open = WIB.localize(datetime(2026, 10, 22, 9, 0, 0))
+        bars = _make_bars(
+            next_open,
+            [(2100, 2500, 2090, 2400, 100000) for _ in range(6)],
+        )
+        with self.db.connect() as conn:
+            row = dict(conn.execute("SELECT * FROM analysis_history WHERE analysis_id = ?", (aid,)).fetchone())
+        out = self.evaluator.evaluate_prediction_with_bars(row, bars)
+        self.assertIsNotNone(out)
+        self.assertEqual(out["evaluation_status"], "INSUFFICIENT_DATA")
+        self.assertEqual(out["entry_filled"], 0)
+
+    # 14. Pre-market DSU: created before open but cutoff is yesterday's close
+    def test_14_premarket_prediction_is_evaluated_on_today_bars(self):
+        cutoff = WIB.localize(datetime(2026, 10, 20, 16, 0, 0))
+        created = WIB.localize(datetime(2026, 10, 21, 8, 15, 0))
+        _, aid = self._create_sample_snapshot_and_prediction(
+            self.db, cutoff_dt=cutoff, created_dt=created, horizon_bars=6
+        )
+        bars = _make_bars(
+            WIB.localize(datetime(2026, 10, 21, 9, 0, 0)),
+            [
+                (2100, 2110, 2095, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2105, 2110, 2100, 2105, 100000),
+                (2105, 2170, 2100, 2160, 200000),  # TP1
+                (2160, 2165, 2140, 2150, 100000),
+            ],
+        )
+        with self.db.connect() as conn:
+            row = dict(conn.execute("SELECT * FROM analysis_history WHERE analysis_id = ?", (aid,)).fetchone())
+        out = self.evaluator.evaluate_prediction_with_bars(row, bars)
+        self.assertIsNotNone(out)
+        self.assertEqual(out["evaluation_status"], "RESOLVED_WIN_TP1")
+        self.assertTrue(str(out["entry_fill_timestamp"]).startswith("2026-10-21"))
+
+    # 15. Position sizing: late entries must know how many bars are left
+    def test_15_remaining_intraday_bars_blocks_late_entries(self):
+        def left(hour, minute):
+            return remaining_intraday_bars(
+                WIB.localize(datetime(2026, 10, 27, hour, minute)),
+                "15m",
+                "TLKM.JK",
+            )
+
+        self.assertEqual(left(8, 15), 23)
+        self.assertEqual(left(14, 30), 6)
+        self.assertEqual(left(14, 45), 5)
+        self.assertEqual(left(16, 0), 0)
+
+    # 16. Lessons and confidence ignore overnight/after-close outcomes
+    def test_16_lessons_ignore_overnight_outcomes(self):
+        t0 = WIB.localize(datetime(2026, 10, 21, 9, 30, 0))
+        _, same_day_id = self._create_sample_snapshot_and_prediction(
+            self.db, cutoff_dt=t0, setup_type="CLEAN_SESSION_TEST", horizon_bars=2
+        )
+        bars = _make_bars(
+            t0,
+            [
+                (2100, 2100, 2100, 2100, 100000),
+                (2100, 2105, 2095, 2100, 100000),
+                (2100, 2105, 2040, 2045, 200000),  # SL 2050
+            ],
+        )
+        with self.db.connect() as conn:
+            row = dict(conn.execute("SELECT * FROM analysis_history WHERE analysis_id = ?", (same_day_id,)).fetchone())
+        self.evaluator.evaluate_prediction_with_bars(row, bars)
+
+        t1 = WIB.localize(datetime(2026, 10, 21, 14, 0, 0))
+        _, overnight_id = self._create_sample_snapshot_and_prediction(
+            self.db, cutoff_dt=t1, setup_type="CLEAN_SESSION_TEST", horizon_bars=6
+        )
+        self.evaluator._insert_outcome(
+            analysis_id=overnight_id,
+            evaluation_status="RESOLVED_LOSS_SL",
+            entry_filled=1,
+            entry_fill_price=2100.0,
+            entry_fill_timestamp=(t1 + timedelta(hours=1)).isoformat(),
+            exit_price=2050.0,
+            exit_timestamp=WIB.localize(datetime(2026, 10, 22, 9, 0, 0)).isoformat(),
+            actual_high=2110.0,
+            actual_low=2040.0,
+            actual_close=2050.0,
+            bars_evaluated=6,
+            gross_return_pct=-2.38,
+            net_return_pct=-2.88,
+            fee_buy_pct=config.FEE_BUY_PCT,
+            fee_sell_pct=config.FEE_SELL_PCT,
+            slippage_pct=config.DEFAULT_SLIPPAGE_PCT,
+            duration_minutes=1080.0,
+            is_ambiguous=0,
+            resolution_notes="Synthetic overnight loss for clean-learning test.",
+        )
+        self.evaluator.recompute_strategy_lessons()
+        with self.db.connect() as conn:
+            lesson = conn.execute(
+                """
+                SELECT resolved_trades, loss_count FROM strategy_lessons
+                WHERE setup_type = 'CLEAN_SESSION_TEST' AND ticker_scope = 'ALL'
+                  AND execution_mode = 'PAPER'
+                """
+            ).fetchone()
+        self.assertIsNotNone(lesson)
+        self.assertEqual(lesson["resolved_trades"], 1)
+        self.assertEqual(lesson["loss_count"], 1)
 
 
 if __name__ == "__main__":

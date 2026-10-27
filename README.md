@@ -133,6 +133,12 @@ cd /home/dimas/projects/saham-ai-agent
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
+### E. Aturan Same-Session Learning
+- Satu prediksi = satu sesi bursa. Evaluasi memakai tanggal `created_at_wib`, sehingga prediksi DSU pre-market tetap dinilai pada bar hari itu, bukan bar kemarin.
+- Tidak ada evaluasi overnight/weekend. Posisi yang belum kena TP/SL ditutup paksa di bar terakhir sesi.
+- BUY baru ditahan menjadi `WAIT` jika sisa bar intraday tidak cukup untuk horizon penuh (dan walk-forward melewati sampel tersebut).
+- Pelajaran strategi, kalibrasi confidence, dan laporan performa hanya memakai outcome yang tanggal buat, fill, dan exit-nya sama. Baris lama yang overnight tetap disimpan untuk audit, tetapi tidak dipakai untuk belajar.
+
 ---
 
 ## ⚠️ 6. Batasan Data & Fitur yang Memerlukan Konfigurasi Manual

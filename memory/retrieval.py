@@ -2,7 +2,7 @@ import json
 from typing import Any, Optional
 
 import config
-from memory.database import MemoryDatabase
+from memory.database import MemoryDatabase, same_session_sql
 
 
 class MemoryRetriever:
@@ -40,6 +40,7 @@ class MemoryRetriever:
             "o.entry_filled = 1",
             "o.is_ambiguous = 0",
             "o.evaluation_status LIKE 'RESOLVED_%'",
+            same_session_sql(),
         ]
         params: list[Any] = [setup_type, timeframe]
         if execution_mode:
@@ -147,7 +148,7 @@ class MemoryRetriever:
             lesson_params.append(as_of)
 
         def outcome_filters(extra: list[str], extra_params: list[Any]) -> tuple[str, tuple[Any, ...]]:
-            filters = list(extra)
+            filters = [same_session_sql(), *extra]
             params = list(extra_params)
             if execution_mode:
                 filters.append("a.execution_mode = ?")

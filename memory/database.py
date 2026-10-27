@@ -44,6 +44,21 @@ def _clean_float(val: Any, default: Optional[float] = 0.0) -> Optional[float]:
         return default
 
 
+def same_session_sql(analysis_alias: str = "a", outcome_alias: str = "o") -> str:
+    """SQL filter: outcome must start and finish on the prediction's creation date.
+
+    A pre-market DSU prediction is created before the open, so it may still use
+    yesterday's last bar as its cutoff and be evaluated on today's bars.
+    """
+    a = analysis_alias
+    o = outcome_alias
+    return (
+        f"substr({a}.created_at_wib, 1, 10) = substr({o}.exit_timestamp, 1, 10) "
+        f"AND ({o}.entry_filled = 0 OR "
+        f"substr({a}.created_at_wib, 1, 10) = substr({o}.entry_fill_timestamp, 1, 10))"
+    )
+
+
 class MemoryDatabase:
     """
     Persistent SQLite database with WAL mode, schema migration tracking,

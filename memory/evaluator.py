@@ -8,7 +8,7 @@ import pytz
 import yfinance as yf
 
 import config
-from memory.database import MemoryDatabase, now_wib_iso
+from memory.database import MemoryDatabase, now_wib_iso, same_session_sql
 
 WIB = pytz.timezone(config.TIMEZONE)
 
@@ -18,6 +18,17 @@ def _parse_ts(ts_str: str) -> pd.Timestamp:
     if ts.tzinfo is None:
         return ts.tz_localize(WIB)
     return ts.tz_convert(WIB)
+
+
+def _session_finished(created_ts: pd.Timestamp) -> bool:
+    """True once the prediction's creation day has no more IDX bars to evaluate."""
+    now = datetime.now(WIB)
+    if created_ts.date() < now.date():
+        return True
+    if created_ts.date() > now.date():
+        return False
+    close_h, close_m = [int(x) for x in config.MARKET_CLOSE_TIME.split(":")]
+    return now.time() >= datetime.min.time().replace(hour=close_h, minute=close_m)
 
 
 def compute_max_drawdown_pct(net_returns_pct: list[float]) -> float:
@@ -41,7 +52,8 @@ class OutcomeEvaluator:
     """
     Chronological, idempotent, zero-leakage evaluator for stock predictions.
     - Never alters `analysis_history`.
-    - Never evaluates bars at or before `bar_cutoff_timestamp`.
+    - Never evaluates bars at or before the later of `bar_cutoff_timestamp` and `created_at_wib`.
+    - Only uses bars from the prediction's creation day; no overnight/weekend outcomes.
     - Marks outcomes as `AMBIGUOUS_BAR_ORDER` when both TP and SL (or uncertain entry+TP) occur in the same bar.
     - Deducts realistic transaction costs (buy fee + sell fee + slippage) for `net_return_pct`.
     """
@@ -75,6 +87,9 @@ class OutcomeEvaluator:
 
         direction = str(analysis_row["direction"]).upper()
         cutoff_ts = _parse_ts(str(analysis_row["bar_cutoff_timestamp"]))
+        created_ts = _parse_ts(
+            str(analysis_row.get("created_at_wib") or analysis_row["bar_cutoff_timestamp"])
+        )
         horizon_bars = int(analysis_row["horizon_bars"])
 
         if df_bars is None or df_bars.empty:
@@ -86,13 +101,23 @@ class OutcomeEvaluator:
         else:
             df.index = df.index.tz_convert(WIB)
 
-        # STRICT ZERO DATA LEAKAGE FILTER: only bars strictly AFTER bar_cutoff_timestamp
-        future_bars = df[df.index > cutoff_ts].sort_index()
-        if future_bars.empty:
+        # Never use bars that existed before the prediction was actually recorded
+        # (a pre-market DSU prediction may use yesterday's close as its cutoff).
+        effective_start = max(cutoff_ts, created_ts)
+        future_bars = df[df.index > effective_start].sort_index()
+        same_day_bars = future_bars[future_bars.index.date == created_ts.date()]
+        if same_day_bars.empty:
+            if _session_finished(created_ts):
+                return self._insert_unavailable(
+                    analysis_row,
+                    "Tidak ada bar same-day setelah prediksi dibuat; sinyal setelah penutupan atau horizon melewati sesi.",
+                )
             return None
 
-        window_bars = future_bars.iloc[:horizon_bars]
+        # One prediction = one trading session. No overnight/weekend evaluation.
+        window_bars = same_day_bars.iloc[:horizon_bars]
         bars_count = len(window_bars)
+        session_finished = _session_finished(created_ts)
 
         entry_low = float(analysis_row["entry_low"])
         entry_high = float(analysis_row["entry_high"])
@@ -106,7 +131,7 @@ class OutcomeEvaluator:
 
         # Case 1: WAIT or AVOID signal
         if direction in ("WAIT", "AVOID"):
-            if bars_count < max(1, min(3, horizon_bars)):
+            if bars_count < max(1, min(3, horizon_bars)) and not session_finished:
                 return None
             avoided_drop = actual_low <= stop_loss
             note = (
@@ -140,7 +165,7 @@ class OutcomeEvaluator:
         # We do not model IDX shorting; this measures whether the sell call
         # avoided a decline from the signal price to the horizon close.
         if direction == "SELL":
-            if bars_count < horizon_bars:
+            if bars_count < horizon_bars and not session_finished:
                 return None
             entry = float(analysis_row["entry_price"])
             exit_p = actual_close
@@ -307,17 +332,18 @@ class OutcomeEvaluator:
                         # Lock in +1.50% profit
                         current_sl = max(current_sl, fill_price * 1.015)
 
-        # If not resolved by TP/SL/Ambiguous yet: check if full horizon has elapsed
+        # If not resolved by TP/SL/Ambiguous yet: wait for the horizon, or force
+        # a same-day close when the market session has ended.
         if status == "PENDING":
-            if bars_count < horizon_bars:
+            if bars_count < horizon_bars and not session_finished:
                 # Horizon not yet complete; wait for more bars before recording terminal outcome
                 return None
 
             if not filled:
                 status = "EXPIRED_NO_FILL"
                 notes = (
-                    f"Order expired after {bars_count} horizon bars without touching entry_high ({entry_high:.0f}). "
-                    f"Lowest price in horizon was {actual_low:.0f}."
+                    f"Order expired after {bars_count} same-day bars without touching entry_high ({entry_high:.0f}). "
+                    f"Lowest price in session was {actual_low:.0f}."
                 )
                 return self._insert_outcome(
                     analysis_id=analysis_id,
@@ -344,7 +370,13 @@ class OutcomeEvaluator:
                 status = "RESOLVED_TIME_EXIT"
                 exit_price = actual_close
                 exit_ts = window_bars.index[-1]
-                notes = f"Horizon of {bars_count} bars completed; time-exit at horizon close ({exit_price:.0f})."
+                if bars_count < horizon_bars:
+                    notes = (
+                        f"Session ended after {bars_count}/{horizon_bars} horizon bars; "
+                        f"forced same-day time-exit at close ({exit_price:.0f})."
+                    )
+                else:
+                    notes = f"Horizon of {bars_count} bars completed; time-exit at horizon close ({exit_price:.0f})."
 
         # Calculate duration & returns
         assert fill_price is not None and exit_price is not None and fill_ts is not None and exit_ts is not None
@@ -586,7 +618,7 @@ class OutcomeEvaluator:
         """
         with self.db.connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT
                     a.strategy_name,
                     a.strategy_version,
@@ -604,7 +636,7 @@ class OutcomeEvaluator:
                     o.evaluated_at_wib
                 FROM analysis_history a
                 INNER JOIN prediction_outcomes o ON a.analysis_id = o.analysis_id
-                WHERE a.direction = 'BUY'
+                WHERE a.direction = 'BUY' AND {same_session_sql()}
                 ORDER BY a.bar_cutoff_timestamp ASC
                 """
             ).fetchall()
