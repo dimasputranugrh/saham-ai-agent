@@ -8,99 +8,167 @@ import pytz
 import config
 
 
+def _resolve_db_path() -> Path | None:
+    candidates = [
+        Path(config.MEMORY_DB_PATH),
+        config.BASE_DIR / "data" / "agent_memory.db",
+        Path.cwd() / "data" / "agent_memory.db",
+        Path("/app/data/agent_memory.db"),
+    ]
+    for p in candidates:
+        try:
+            if p.exists() and p.is_file() and p.stat().st_size > 1024:
+                return p
+        except Exception:
+            continue
+    return None
+
+
 def get_dashboard_summary():
-    """Mengambil data rekap harga dan analisis terkini dari SQLite agent_memory.db."""
-    db_path = config.MEMORY_DB_PATH
-    if not Path(db_path).exists():
-        return {
-            "recap_items": [],
-            "sectors": [],
-            "stats": {"total": 0, "buy_count": 0, "wait_count": 0, "win_rate": 0},
-            "last_updated": "Belum ada data",
-        }
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    # 1. Ambil rekap analisis terbaru per ticker
-    sql_recap = """
-    SELECT a.*, s.price as last_price, s.vwap, s.rsi, s.ihsg_regime
-    FROM analysis_history a
-    LEFT JOIN market_snapshots s ON a.snapshot_id = s.snapshot_id
-    WHERE a.rowid IN (
-        SELECT MAX(rowid) FROM analysis_history GROUP BY ticker
-    )
-    ORDER BY CASE WHEN a.direction = 'BUY' THEN 1 ELSE 2 END, a.rowid DESC
-    """
-    rows = cur.execute(sql_recap).fetchall()
+    """Mengambil data rekap harga dan analisis terkini dari SQLite agent_memory.db dengan fallback live scan."""
+    db_path = _resolve_db_path()
 
     recap_items = []
+    sectors = []
     buy_count = 0
     wait_count = 0
 
-    for r in rows:
-        direction = r["direction"] or "WAIT"
-        if direction == "BUY":
-            buy_count += 1
-        else:
-            wait_count += 1
-
-        entry = float(r["entry_price"] or 0)
-        tp1 = float(r["take_profit_1"] or 0)
-        tp2 = float(r["take_profit_2"] or 0)
-        sl = float(r["stop_loss"] or 0)
-
-        tp1_pct = ((tp1 - entry) / entry * 100) if entry > 0 else 0
-        tp2_pct = ((tp2 - entry) / entry * 100) if entry > 0 else 0
-        sl_pct = ((sl - entry) / entry * 100) if entry > 0 else 0
-
-        # Waktu format WIB ramah manusia
-        created_wib = r["created_at_wib"] or ""
-        time_display = created_wib
+    if db_path is not None:
         try:
-            if "T" in created_wib:
-                dt_obj = datetime.fromisoformat(created_wib)
-                time_display = dt_obj.strftime("%d %b, %H:%M WIB")
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+
+            # 1. Ambil rekap analisis terbaru per ticker
+            sql_recap = """
+            SELECT a.*, s.price as last_price, s.vwap, s.rsi, s.ihsg_regime
+            FROM analysis_history a
+            LEFT JOIN market_snapshots s ON a.snapshot_id = s.snapshot_id
+            WHERE a.rowid IN (
+                SELECT MAX(rowid) FROM analysis_history GROUP BY ticker
+            )
+            ORDER BY CASE WHEN a.direction = 'BUY' THEN 1 ELSE 2 END, a.rowid DESC
+            """
+            rows = cur.execute(sql_recap).fetchall()
+
+            for r in rows:
+                direction = r["direction"] or "WAIT"
+                if direction == "BUY":
+                    buy_count += 1
+                else:
+                    wait_count += 1
+
+                entry = float(r["entry_price"] or 0)
+                tp1 = float(r["take_profit_1"] or 0)
+                tp2 = float(r["take_profit_2"] or 0)
+                sl = float(r["stop_loss"] or 0)
+
+                tp1_pct = ((tp1 - entry) / entry * 100) if entry > 0 else 0
+                tp2_pct = ((tp2 - entry) / entry * 100) if entry > 0 else 0
+                sl_pct = ((sl - entry) / entry * 100) if entry > 0 else 0
+
+                # Waktu format WIB ramah manusia
+                created_wib = r["created_at_wib"] or ""
+                time_display = created_wib
+                try:
+                    if "T" in created_wib:
+                        dt_obj = datetime.fromisoformat(created_wib)
+                        time_display = dt_obj.strftime("%d %b, %H:%M WIB")
+                except Exception:
+                    pass
+
+                recap_items.append({
+                    "ticker": r["ticker"].replace(".JK", ""),
+                    "full_ticker": r["ticker"],
+                    "sector": r["sector"] or "UMUM",
+                    "direction": direction,
+                    "entry_price": f"Rp {entry:,.0f}".replace(",", "."),
+                    "entry_num": entry,
+                    "tp1": f"Rp {tp1:,.0f}".replace(",", ".") if tp1 > 0 else "-",
+                    "tp1_pct": f"+{tp1_pct:.1f}%" if tp1 > 0 else "-",
+                    "tp2": f"Rp {tp2:,.0f}".replace(",", ".") if tp2 > 0 else "-",
+                    "tp2_pct": f"+{tp2_pct:.1f}%" if tp2 > 0 else "-",
+                    "sl": f"Rp {sl:,.0f}".replace(",", ".") if sl > 0 else "-",
+                    "sl_pct": f"{sl_pct:.1f}%" if sl > 0 else "-",
+                    "confidence_pct": int((r["calibrated_confidence"] or 0.5) * 100),
+                    "rsi": f"{r['rsi']:.1f}" if r["rsi"] else "-",
+                    "time_display": time_display,
+                })
+
+            # 2. Ambil Radar Sektor
+            sql_sectors = """
+            SELECT sector_label, catalyst_direction, positive_signals, negative_signals, captured_at_wib
+            FROM sector_news_investigations
+            ORDER BY rowid DESC
+            LIMIT 7
+            """
+            sec_rows = cur.execute(sql_sectors).fetchall()
+            for s in sec_rows:
+                sectors.append({
+                    "label": s["sector_label"],
+                    "direction": s["catalyst_direction"],
+                    "pos": s["positive_signals"],
+                    "neg": s["negative_signals"],
+                })
+
+            conn.close()
         except Exception:
             pass
 
-        recap_items.append({
-            "ticker": r["ticker"].replace(".JK", ""),
-            "full_ticker": r["ticker"],
-            "sector": r["sector"] or "UMUM",
-            "direction": direction,
-            "entry_price": f"Rp {entry:,.0f}".replace(",", "."),
-            "entry_num": entry,
-            "tp1": f"Rp {tp1:,.0f}".replace(",", ".") if tp1 > 0 else "-",
-            "tp1_pct": f"+{tp1_pct:.1f}%" if tp1 > 0 else "-",
-            "tp2": f"Rp {tp2:,.0f}".replace(",", ".") if tp2 > 0 else "-",
-            "tp2_pct": f"+{tp2_pct:.1f}%" if tp2 > 0 else "-",
-            "sl": f"Rp {sl:,.0f}".replace(",", ".") if sl > 0 else "-",
-            "sl_pct": f"{sl_pct:.1f}%" if sl > 0 else "-",
-            "confidence_pct": int((r["calibrated_confidence"] or 0.5) * 100),
-            "rsi": f"{r['rsi']:.1f}" if r["rsi"] else "-",
-            "time_display": time_display,
-        })
+    # Failsafe Live Fallback jika DB belum terisi / kosong di container cloud
+    if not recap_items:
+        try:
+            from analyzer.technical import scan_watchlist_quant
+            watchlist = config.load_watchlist()
+            snapshots = scan_watchlist_quant(watchlist)
+            for s in snapshots:
+                code = s.ticker.replace(".JK", "")
+                direction = s.direction or "WAIT"
+                if direction == "BUY":
+                    buy_count += 1
+                else:
+                    wait_count += 1
+                entry = float(s.current_price or 0)
+                tp1 = float(s.take_profit_1 or 0)
+                tp2 = float(s.take_profit_2 or 0)
+                sl = float(s.stop_loss or 0)
+                tp1_pct = ((tp1 - entry) / entry * 100) if entry > 0 else 0
+                tp2_pct = ((tp2 - entry) / entry * 100) if entry > 0 else 0
+                sl_pct = ((sl - entry) / entry * 100) if entry > 0 else 0
+                sec = config.SECTOR_MAP.get(s.ticker.upper(), "UMUM")
+                recap_items.append({
+                    "ticker": code,
+                    "full_ticker": s.ticker,
+                    "sector": sec,
+                    "direction": direction,
+                    "entry_price": f"Rp {entry:,.0f}".replace(",", "."),
+                    "entry_num": entry,
+                    "tp1": f"Rp {tp1:,.0f}".replace(",", ".") if tp1 > 0 else "-",
+                    "tp1_pct": f"+{tp1_pct:.1f}%" if tp1 > 0 else "-",
+                    "tp2": f"Rp {tp2:,.0f}".replace(",", ".") if tp2 > 0 else "-",
+                    "tp2_pct": f"+{tp2_pct:.1f}%" if tp2 > 0 else "-",
+                    "sl": f"Rp {sl:,.0f}".replace(",", ".") if sl > 0 else "-",
+                    "sl_pct": f"{sl_pct:.1f}%" if sl > 0 else "-",
+                    "confidence_pct": s.quant_score,
+                    "rsi": f"{s.intraday_rsi:.1f}",
+                    "time_display": "Live Scan",
+                })
+        except Exception:
+            pass
 
-    # 2. Ambil Radar Sektor
-    sql_sectors = """
-    SELECT sector_label, catalyst_direction, positive_signals, negative_signals, captured_at_wib
-    FROM sector_news_investigations
-    ORDER BY rowid DESC
-    LIMIT 7
-    """
-    sec_rows = cur.execute(sql_sectors).fetchall()
-    sectors = []
-    for s in sec_rows:
-        sectors.append({
-            "label": s["sector_label"],
-            "direction": s["catalyst_direction"],
-            "pos": s["positive_signals"],
-            "neg": s["negative_signals"],
-        })
-
-    conn.close()
+    if not sectors:
+        try:
+            from analyzer.news import scan_all_sectors_news_and_catalysts
+            sec_radar = scan_all_sectors_news_and_catalysts(articles_per_sector=2)
+            for s in sec_radar:
+                sectors.append({
+                    "label": s.get("sector_label", s.get("sector_name", "")),
+                    "direction": s.get("catalyst_direction", "NEUTRAL"),
+                    "pos": s.get("positive_signals", 0),
+                    "neg": s.get("negative_signals", 0),
+                })
+        except Exception:
+            pass
 
     now_wib = datetime.now(pytz.timezone(config.TIMEZONE)).strftime("%d %B %Y • %H:%M:%S WIB")
 

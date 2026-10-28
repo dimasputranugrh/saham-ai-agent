@@ -83,7 +83,7 @@ def _deterministic_slot_vote(
 
     if slot_id == "AI_1":
         # Momentum Scalper: Focuses on VWAP & Volume spike
-        is_buy = (price >= vwap) and (vol_ratio >= 1.15) and (45 <= rsi <= 72) and score >= 62
+        is_buy = (price >= vwap) and (vol_ratio >= 1.30) and (45 <= rsi <= 72) and score >= 72
         conf = min(92.0, max(35.0, score + (8.0 if price >= vwap else -10.0) + (5.0 if vol_ratio >= 1.3 else 0.0)))
         reason = (
             f"Harga bertahan di atas rata-rata VWAP dengan volume {vol_ratio:.1f}x, dorongan pembeli kuat."
@@ -95,8 +95,8 @@ def _deterministic_slot_vote(
         is_buy = (
             (spread_pct <= 0.50)
             and (rsi <= 63.0)
-            and (net_ret >= 1.2)
-            and (score >= 68)
+            and (net_ret >= 1.35)
+            and (score >= 72)
             and not has_degraded_warning
         )
         conf = min(88.0, max(30.0, score - (spread_pct * 12.0) - (8.0 if rsi > 63 else 0.0)))
@@ -108,7 +108,7 @@ def _deterministic_slot_vote(
     elif slot_id == "AI_3":
         # Gemma-4 OpenMoE Bandar & Flow: Focuses on accumulation & MACD/Volume
         macd_h = float(snap_dict.get("intraday_macd_hist", 0.0))
-        is_buy = (vol_ratio >= 1.1) and (macd_h >= 0) and (score >= 64)
+        is_buy = (vol_ratio >= 1.25) and (macd_h >= 0) and (score >= 72)
         conf = min(90.0, max(32.0, score + (6.0 if macd_h > 0 else -8.0)))
         reason = (
             f"Aliran akumulasi positif (MACD histogram naik & rasio volume {vol_ratio:.1f}x)."
@@ -118,7 +118,7 @@ def _deterministic_slot_vote(
     elif slot_id == "AI_4":
         # Trend & Swing Guard: Focuses on Daily Uptrend & Reward/Risk
         uptrend = "UPTREND" in daily_trend.upper() or "BULLISH" in daily_trend.upper()
-        is_buy = uptrend and (rr >= 1.5) and (score >= 63)
+        is_buy = uptrend and (rr >= 1.8) and (score >= 72)
         conf = min(90.0, max(35.0, score + (7.0 if uptrend else -10.0)))
         reason = (
             f"Tren besar searah naik ({daily_trend}) dengan rasio untung/rugi 1:{rr:.1f} yang sehat."
@@ -128,8 +128,8 @@ def _deterministic_slot_vote(
     elif slot_id == "AI_6":
         # Pattern & Reversal Master: Focuses on RSI oversold recovery, candle structure, and non-degraded signals
         rsi_rebound = (35 <= rsi <= 64)
-        score_ok = score >= 62
-        is_buy = rsi_rebound and score_ok and (vol_ratio >= 1.05) and not has_degraded_warning
+        score_ok = score >= 68
+        is_buy = rsi_rebound and score_ok and (vol_ratio >= 1.15) and not has_degraded_warning
         conf = min(92.0, max(35.0, score + (7.0 if rsi_rebound else -8.0)))
         reason = (
             f"Pola candlestick reversal terkonfirmasi (RSI {rsi:.0f} mantul dari bawah, struktur candle sehat)."
@@ -139,7 +139,7 @@ def _deterministic_slot_vote(
     else:
         # AI_5: Pure Quant & Bayesian Memory Engine
         cal_pct = round(calibrated_conf * 100.0, 1)
-        is_buy = (cal_pct >= 56.0) and (score >= 65) and (net_ret >= 1.0) and not has_degraded_warning
+        is_buy = (cal_pct >= 56.0) and (score >= 72) and (net_ret >= 1.35) and not has_degraded_warning
         conf = cal_pct
         reason = (
             f"Statistik memori & skor kuantitatif ({score}/100) mendukung peluang menang {cal_pct:.1f}% (net +{net_ret:.1f}%)."
@@ -449,27 +449,30 @@ def run_5_ai_panel_consensus(
     ai6_vote = next((v for v in votes if v.get("slot_id") == "AI_6"), None)
     ai5_vote = next((v for v in votes if v.get("slot_id") == "AI_5"), None)
     ai6_veto = (ai6_vote is not None and ai6_vote.get("vote_direction") == "WAIT" and float(ai6_vote.get("confidence_pct", 50)) >= 55.0)
+    ai5_veto = (ai5_vote is not None and ai5_vote.get("vote_direction") == "WAIT" and float(ai5_vote.get("confidence_pct", 50)) >= 55.0)
+    veto_active = ai6_veto or ai5_veto
 
     # Keputusan Chief Arthur (Supreme Decider) - Diperketat demi proteksi modal riil Bos
-    if buy_count >= 5 and works_pct >= 70.0 and not has_degraded:
+    if buy_count >= 5 and works_pct >= 72.0 and not has_degraded and not veto_active:
         final_decision = "BUY"
         verdict_label = f"🟢 SANGAT LAYAK BELI (KONSENSUS KUAT: {buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
         chief_summary = (
             f"Super-mayoritas ({buy_count} dari {total_ai} AI) solid merekomendasikan BELI dengan keyakinan tinggi ({works_pct:.1f}% Works). "
             f"Peluang menang terkonfirmasi sehat dan rasio Risk:Reward > 1:2 setelah dikurangi fee transaksi."
         )
-    elif buy_count >= 4 and works_pct >= 65.0 and not has_degraded and not ai6_veto:
+    elif buy_count >= 4 and works_pct >= 67.0 and not has_degraded and not veto_active:
         final_decision = "BUY"
         verdict_label = f"🟢 LAYAK BELI SELEKTIF ({buy_count}/{total_ai} AI Setuju — {works_pct:.1f}% Works)"
         chief_summary = (
-            f"Mayoritas kuat ({buy_count} dari {total_ai} AI) menyetujui BELI ({works_pct:.1f}% Works) tanpa penolakan dari AI_6. "
+            f"Mayoritas kuat ({buy_count} dari {total_ai} AI) menyetujui BELI ({works_pct:.1f}% Works) tanpa veto AI unggulan. "
             f"Boleh antri beli bertahap di area bawah (entry low), dilarang kejar harga pucuk."
         )
-    elif ai6_veto and buy_count >= 4:
+    elif veto_active and buy_count >= 4:
+        veto_ai = "AI_6" if ai6_veto else "AI_5"
         final_decision = "WAIT"
-        verdict_label = f"🔴 VETO DEFENSE AKTIF: DITAHAN AI_6 ({buy_count}/{total_ai} AI Mau Beli Tapi Ditolak)"
+        verdict_label = f"🔴 VETO DEFENSE AKTIF: DITAHAN {veto_ai} ({buy_count}/{total_ai} AI Mau Beli Tapi Ditolak)"
         chief_summary = (
-            f"{buy_count} dari {total_ai} AI menyarankan BUY, namun AI_6 (Pattern & Reversal Master) "
+            f"{buy_count} dari {total_ai} AI menyarankan BUY, namun {veto_ai} (AI Akurasi Tertinggi) "
             f"mengaktifkan VETO DEFENSE dan menyarankan WAIT demi mencegah jebakan false breakout/nyangkut."
         )
     else:

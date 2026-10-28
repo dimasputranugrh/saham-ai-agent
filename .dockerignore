@@ -7,9 +7,10 @@ venv
 __pycache__
 *.pyc
 .pytest_cache
-data
 tests
-*.db
-*.db-wal
-*.db-shm
+data/backups
+data/stockbit_profile
+data/*.png
+data/*.db-wal
+data/*.db-shm
 node_modules

@@ -83,8 +83,8 @@ class LearningLoopOrchestrator:
         ihsg_info: Optional[dict[str, Any]] = None,
         news_context: str = "",
         timeframe: str = "15m",
-        horizon_bars: int = 8,
-        horizon_minutes: int = 120,
+        horizon_bars: int = 16,
+        horizon_minutes: int = 240,
         execution_mode: str = config.EXECUTION_MODE,
         save_prediction: bool = True,
     ) -> Optional[dict[str, Any]]:

@@ -8,9 +8,25 @@ import pytz
 import config
 
 
+def _resolve_db_path() -> Path | None:
+    candidates = [
+        Path(config.MEMORY_DB_PATH),
+        config.BASE_DIR / "data" / "agent_memory.db",
+        Path.cwd() / "data" / "agent_memory.db",
+        Path("/app/data/agent_memory.db"),
+    ]
+    for p in candidates:
+        try:
+            if p.exists() and p.is_file() and p.stat().st_size > 1024:
+                return p
+        except Exception:
+            continue
+    return None
+
+
 def get_live_office_data():
     """Mengambil status real-time aktivitas & kapasitas seluruh karyawan AI."""
-    db_path = config.MEMORY_DB_PATH
+    db_path = _resolve_db_path()
     tz = pytz.timezone(config.TIMEZONE)
     now_dt = datetime.now(tz)
     now_wib = now_dt.strftime("%d %B %Y • %H:%M:%S WIB")
@@ -193,7 +209,7 @@ def get_live_office_data():
     active_analyses_count = 0
     total_votes_recorded = 0
 
-    if Path(db_path).exists():
+    if db_path is not None:
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row

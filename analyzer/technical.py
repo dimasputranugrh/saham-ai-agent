@@ -458,7 +458,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         candidate_tp1 = min(resistance_1, target_r_tp1)
     else:
         candidate_tp1 = target_r_tp1
-    candidate_tp1 = max(entry_high * 1.015, min(candidate_tp1, entry_high * 1.025))
+    candidate_tp1 = max(entry_high * 1.020, min(candidate_tp1, entry_high * 1.035))
     tp1 = round_idx_tick(candidate_tp1, is_idx)
 
     target_r_tp2 = entry_high + 2.2 * risk_per_share
@@ -577,20 +577,20 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         # Volatilitas liar / spread lebar (seperti BREN): WAIT
         setup_type = "HIGH_SPREAD_OR_EXTREME_VOLATILITY_WAIT"
         direction = "WAIT"
-    elif est_net_ret_pct < 1.20:
+    elif est_net_ret_pct < 1.35:
         setup_type = "LOW_NET_EDGE_WAIT"
         direction = "WAIT"
     elif is_midday_lull and max_vol_surge < 1.60:
         setup_type = "MIDDAY_LULL_WAIT"
         direction = "WAIT"
         opposing_ev.append("Sesi Istirahat/Sepi (11:15 - 13:45 WIB): Tahan beli agar tidak gantung dan kena Time Exit.")
-    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.25 and cmf_val >= -0.02:
+    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.35 and cmf_val >= 0.02:
         setup_type = "VWAP_BREAKOUT_UPTREND"
-        direction = "BUY" if score >= 68 else "WAIT"
-    elif current_price >= intra_vwap and rsi_d < 45 and not is_downtrend and cmf_val >= 0.0:
+        direction = "BUY" if score >= 74 else "WAIT"
+    elif current_price >= intra_vwap and rsi_d < 45 and not is_downtrend and cmf_val >= 0.02 and max_vol_surge >= 1.25:
         setup_type = "OVERSOLD_VWAP_RECLAIM"
-        direction = "BUY" if score >= 66 and max_vol_surge >= 1.15 else "WAIT"
-    elif current_price >= intra_vwap and score >= 75 and max_vol_surge >= 1.50 and current_price > ema20_d and cmf_val >= 0.0:
+        direction = "BUY" if score >= 74 else "WAIT"
+    elif current_price >= intra_vwap and score >= 76 and max_vol_surge >= 1.50 and current_price > ema20_d and cmf_val >= 0.02:
         # Hanya boleh BUY jika ada volume spike kuat & tren harian aman di atas EMA20 & CMF positif
         setup_type = "INTRADAY_VWAP_SUPPORT"
         direction = "BUY"

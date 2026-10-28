@@ -69,7 +69,17 @@ def _analyze_with_panel(
 
     base = str(ctx.get("final_direction", "WAIT"))
     panel_decision = str(panel.get("final_decision", "WAIT"))
-    if base == "AVOID":
+    regime = str(ihsg_info.get("regime", "NEUTRAL")).upper()
+
+    if regime in ("BEARISH_DOWNTREND", "BULLISH_PULLBACK") and (base == "BUY" or panel_decision == "BUY"):
+        final_decision = "WAIT"
+        panel["final_decision"] = "WAIT"
+        panel["verdict_label"] = f"🔴 DITAHAN REZIM IHSG ({regime})"
+        panel["chief_summary"] = (
+            f"Kondisi IHSG ({regime}) memiliki win rate historis sangat rendah (<8%). "
+            "Semua pembelian baru ditahan menjadi WAIT demi mengamankan modal Bos."
+        )
+    elif base == "AVOID":
         final_decision = "AVOID"
     elif base == "BUY" and panel_decision == "BUY":
         final_decision = "BUY"
@@ -185,8 +195,8 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
                 snap=s,
                 ihsg_info=ihsg,
                 timeframe="15m",
-                horizon_bars=8,
-                horizon_minutes=120,
+                horizon_bars=16,
+                horizon_minutes=240,
                 use_live_llm=False,
                 news_context=news_summary_str,
             )
@@ -338,8 +348,8 @@ def analyze_single_stock_with_team(ticker_input: str) -> str:
         snap=snap,
         ihsg_info=ihsg_info,
         timeframe="15m",
-        horizon_bars=8,
-        horizon_minutes=120,
+        horizon_bars=16,
+        horizon_minutes=240,
         use_live_llm=True,
         news_context=news_str,
     )
@@ -473,8 +483,8 @@ def generate_intraday_scanner_alert(min_score: int | None = None) -> tuple[list[
                 snap=s,
                 ihsg_info=ihsg_info,
                 timeframe="15m",
-                horizon_bars=8,
-                horizon_minutes=120,
+                horizon_bars=16,
+                horizon_minutes=240,
                 use_live_llm=False,
             )
             if panel is not None:
