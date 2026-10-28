@@ -11,6 +11,7 @@ from analyzer.technical import (
     analyze_ticker_quant,
     compute_atr,
     compute_bollinger,
+    compute_cmf,
     compute_macd,
     compute_rsi,
     compute_vwap,
@@ -346,7 +347,7 @@ class LearningLoopOrchestrator:
         self,
         tickers: Optional[list[str]] = None,
         timeframe: str = "15m",
-        horizon_bars: int = 6,
+        horizon_bars: int = 12,
         period: str = "1mo",
         full_history: bool = False,
     ) -> dict[str, Any]:
@@ -366,6 +367,7 @@ class LearningLoopOrchestrator:
         strat_ver_tag = str(active_ver["version_tag"])
         total_created = 0
         total_evaluated = 0
+        ihsg_cache: dict[str, dict[str, Any]] = {}
 
         for raw_t in target_tickers:
             ticker = config.normalize_ticker(raw_t)
@@ -384,20 +386,35 @@ class LearningLoopOrchestrator:
             else:
                 df.index = df.index.tz_convert(WIB)
 
-            # Walk forward chronologically from bar 25 to len(df) - horizon_bars - 1, stepping by horizon_bars
+            c_all = df["Close"]
+            df["VWAP"] = compute_vwap(df)
+            df["EMA9"] = c_all.ewm(span=9, adjust=False).mean()
+            df["EMA21"] = c_all.ewm(span=21, adjust=False).mean()
+            df["EMA50"] = c_all.ewm(span=50, adjust=False).mean()
+            df["RSI"] = compute_rsi(c_all, 14)
+            df["ATR"] = compute_atr(df, 14)
+            df["CMF"] = compute_cmf(df, 20)
+            vol_ma_all = df["Volume"].rolling(15).mean().replace(0, np.nan)
+            df["VOL_RATIO"] = (df["Volume"] / vol_ma_all).fillna(1.0)
+
+            # Walk forward chronologically from bar 25 to len(df) - horizon_bars - 1, stepping by step_bars
             start_idx = 25 if full_history else max(25, len(df) - 65)
             end_idx = len(df) - horizon_bars - 1
-            for idx in range(start_idx, end_idx, horizon_bars):
+            step_bars = min(3, max(1, horizon_bars))
+            for idx in range(start_idx, end_idx, step_bars):
                 # STRICT CAUSAL SLICE: only bars up to `idx` (inclusive) are visible!
-                visible = df.iloc[: idx + 1].copy()
-                cutoff_ts = visible.index[-1]
-                # Only train on samples whose horizon fits inside the same IDX session.
-                if remaining_intraday_bars(cutoff_ts, timeframe, ticker) < horizon_bars:
+                last_bar = df.iloc[idx]
+                cutoff_ts = df.index[idx]
+                # Only train on samples that have at least 4 intraday bars before the 16:00 close.
+                if remaining_intraday_bars(cutoff_ts, timeframe, ticker) < min(4, horizon_bars):
                     continue
                 # Skip training on afternoon entries (negative expectancy bucket)
                 if cutoff_ts.strftime("%H:%M") >= config.AFTERNOON_BUY_CUTOFF_TIME:
                     continue
-                ihsg_info = get_ihsg_regime_as_of(cutoff_ts, ihsg_daily)
+                d_key = str(cutoff_ts.date())
+                if d_key not in ihsg_cache:
+                    ihsg_cache[d_key] = get_ihsg_regime_as_of(cutoff_ts, ihsg_daily)
+                ihsg_info = ihsg_cache[d_key]
                 ihsg_regime = str(ihsg_info.get("regime", "NEUTRAL"))
                 as_of = cutoff_ts.isoformat()
 
@@ -415,47 +432,47 @@ class LearningLoopOrchestrator:
                 if already is not None:
                     continue
 
-                c = visible["Close"]
-                visible["VWAP"] = compute_vwap(visible)
-                visible["EMA9"] = c.ewm(span=9, adjust=False).mean()
-                visible["EMA21"] = c.ewm(span=21, adjust=False).mean()
-                visible["RSI"] = compute_rsi(c, 14)
-                visible["ATR"] = compute_atr(visible, 14)
-                vol_ma = visible["Volume"].rolling(15).mean().replace(0, np.nan)
-                visible["VOL_RATIO"] = (visible["Volume"] / vol_ma).fillna(1.0)
-
-                last_bar = visible.iloc[-1]
                 price = float(last_bar["Close"])
                 vwap_val = float(last_bar["VWAP"]) if not np.isnan(last_bar["VWAP"]) else price
                 ema9_val = float(last_bar["EMA9"])
                 ema21_val = float(last_bar["EMA21"])
+                ema50_val = float(last_bar["EMA50"])
                 rsi_val = float(last_bar["RSI"])
                 atr_val = float(last_bar["ATR"]) if not np.isnan(last_bar["ATR"]) and last_bar["ATR"] > 0 else price * 0.015
+                cmf_val = float(last_bar["CMF"]) if not np.isnan(last_bar["CMF"]) else 0.0
                 vol_ratio = float(last_bar["VOL_RATIO"])
 
                 tick_sz = get_idx_tick_size(price, is_idx)
                 spread_pct = round((tick_sz / price) * 100.0, 4)
+                hm_str = cutoff_ts.strftime("%H:%M")
 
-                # Score calculation using only visible data at cutoff_ts
+                # 5-Layer Calibrated Quantitative Scoring (MTF + CMF + Regime + RSI Sweet Spot)
                 score = 50
-                if price >= vwap_val and ema9_val >= ema21_val:
-                    score += 15
+                if price >= vwap_val and ema9_val >= ema21_val and price >= ema50_val:
+                    score += 18
                     setup_type = "VWAP_BREAKOUT_UPTREND"
-                elif price >= vwap_val and rsi_val < 48:
-                    score += 12
+                elif price >= vwap_val and rsi_val < 45 and price >= ema50_val:
+                    score += 15
                     setup_type = "OVERSOLD_VWAP_RECLAIM"
-                elif price >= vwap_val:
-                    score += 8
+                elif price >= vwap_val and price >= ema50_val:
+                    score += 10
                     setup_type = "INTRADAY_VWAP_SUPPORT"
                 else:
-                    score -= 10
+                    score -= 15
                     setup_type = "BEARISH_BELOW_VWAP"
 
-                if vol_ratio >= 1.3:
+                if cmf_val >= 0.08:
                     score += 10
-                if 45 <= rsi_val <= 68:
+                elif cmf_val >= 0.05:
+                    score += 7
+                elif cmf_val < 0.0:
+                    score -= 12
+
+                if vol_ratio >= 1.3:
                     score += 6
-                if spread_pct > 1.0:
+                if 38 <= rsi_val <= 60:
+                    score += 6
+                if spread_pct > 0.45:
                     score -= 20
                     setup_type = "HIGH_SPREAD_OR_LOW_NET_EDGE_WAIT"
 
@@ -483,19 +500,36 @@ class LearningLoopOrchestrator:
                     as_of=as_of,
                 )
 
-                direction = "BUY" if (score >= 62 and spread_pct <= 0.80 and not mem_bundle["has_degraded_warning"]) else "WAIT"
+                in_optimal_window = "09:15" <= hm_str <= "10:45"
+                ihsg_safe = ihsg_regime not in ("BEARISH_DOWNTREND", "BULLISH_PULLBACK")
+                mtf_aligned = price >= vwap_val and ema9_val >= ema21_val and price >= ema50_val
+                flow_ok = cmf_val >= 0.06 and (40 <= rsi_val <= 58)
 
-                entry_high = round_idx_tick(price, is_idx)
-                entry_low = round_idx_tick(max(price - 0.3 * atr_val, price * 0.99), is_idx)
+                direction = (
+                    "BUY"
+                    if (
+                        score >= 72
+                        and 0.18 <= spread_pct <= 0.42
+                        and in_optimal_window
+                        and ihsg_safe
+                        and mtf_aligned
+                        and flow_ok
+                        and not mem_bundle["has_degraded_warning"]
+                    )
+                    else "WAIT"
+                )
+
+                # Pullback Limit Order (-2 ticks below candle close, TP1 at +3 ticks / price + 1 tick)
+                entry_high = round_idx_tick(max(tick_sz * 2, price - 2 * tick_sz), is_idx)
+                entry_low = round_idx_tick(max(entry_high - 0.25 * atr_val, entry_high * 0.99), is_idx)
                 if entry_low > entry_high:
                     entry_low = entry_high
-                sl = round_idx_tick(min(entry_low - 1.0 * atr_val, entry_high * 0.985), is_idx)
+                sl = round_idx_tick(min(entry_low - 0.8 * atr_val, entry_high * 0.978), is_idx)
                 if sl >= entry_low:
                     sl = round_idx_tick(entry_low - tick_sz * 2, is_idx)
                 risk_ps = max(entry_high - sl, tick_sz * 2)
-                target_r_tp1 = entry_high + 1.25 * risk_ps
-                tp1 = round_idx_tick(max(entry_high * 1.015, min(target_r_tp1, entry_high * 1.025)), is_idx)
-                tp2 = round_idx_tick(max(entry_high + 2.2 * risk_ps, entry_high * 1.035), is_idx)
+                tp1 = round_idx_tick(max(entry_high + 3 * tick_sz, entry_high * 1.0075), is_idx)
+                tp2 = round_idx_tick(max(entry_high + 6 * tick_sz, entry_high * 1.020), is_idx)
 
                 est_gross = round(((tp1 - entry_high) / entry_high) * 100.0, 2)
                 est_net = round(est_gross - (config.FEE_BUY_PCT + config.FEE_SELL_PCT + config.DEFAULT_SLIPPAGE_PCT), 2)
@@ -584,9 +618,11 @@ class LearningLoopOrchestrator:
                 outcome = self.evaluator.evaluate_prediction_with_bars(a_row, df)
                 if outcome is not None:
                     total_evaluated += 1
-                    # Update lessons after each chronological outcome so the next step learns from it!
-                    self.evaluator.recompute_strategy_lessons()
+                    if direction == "BUY":
+                        # Update lessons after each chronological BUY outcome so the next step learns from it!
+                        self.evaluator.recompute_strategy_lessons()
 
+        self.evaluator.recompute_strategy_lessons()
         improvement = self.perf.propose_and_validate_strategy_improvement(
             execution_mode="BACKTEST",
             strategy_version=strat_ver_tag,

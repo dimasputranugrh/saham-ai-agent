@@ -430,9 +430,11 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     score = int(max(5, min(98, score)))
 
     # --- 5. Kalkulasi Area Beli, Take Profit, dan Cut Loss berbasis ATR & VWAP ---
+    tick_sz = get_idx_tick_size(current_price, is_idx)
     if current_price >= intra_vwap:
-        raw_entry_low = max(support_1, min(intra_vwap, current_price - 0.25 * atr_val))
-        raw_entry_high = current_price
+        # Antri di Bid / Pullback 2 tick di bawah harga penutupan agar dapat diskon & menang lawan fee broker
+        raw_entry_high = max(intra_vwap, current_price - 2 * tick_sz)
+        raw_entry_low = max(support_1, min(intra_vwap, raw_entry_high - 0.25 * atr_val))
     else:
         # Jika di bawah VWAP, arahkan Buy on Weakness dekat Support 1
         raw_entry_low = support_1
@@ -443,9 +445,9 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     if entry_low == entry_high:
         entry_low = round_idx_tick(entry_high * 0.99, is_idx)
 
-    # Stop Loss di bawah Support 1 / 1.0x ATR (perketat risiko maksimal ~2.5% agar terhindar dari rugi dalam)
+    # Stop Loss di bawah Support 1 / 1.0x ATR (perketat risiko maksimal ~2.2% agar terhindar dari rugi dalam)
     raw_sl = min(entry_low - 0.75 * atr_val, support_1 - 0.35 * atr_val)
-    raw_sl = max(raw_sl, entry_high * 0.975)  # Batasi risiko maksimal ~2.5%
+    raw_sl = max(raw_sl, entry_high * 0.978)  # Batasi risiko maksimal ~2.2%
     stop_loss = round_idx_tick(raw_sl, is_idx)
     if stop_loss >= entry_low:
         stop_loss = round_idx_tick(entry_low * 0.985, is_idx)
@@ -453,29 +455,29 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     risk_per_share = max(entry_high - stop_loss, entry_high * 0.012)
     persona = config.get_stock_persona(ticker)
     if persona == "SWING_BLUECHIP":
-        # Target Swing Realistis untuk Bluechip: TP1 +3.5% - +5.5%, TP2 +6.0% - +9.0%
-        target_r_tp1 = entry_high + 1.6 * risk_per_share
-        if resistance_1 > entry_high and resistance_1 <= entry_high * 1.05:
+        # Target terkalibrasi Bluechip (mudah tersentuh MFE harian + menutup fee 0.50%): TP1 +1.5% - +2.5%, TP2 +4.0% - +6.0%
+        target_r_tp1 = entry_high + 1.25 * risk_per_share
+        if resistance_1 > entry_high and resistance_1 <= entry_high * 1.03:
             candidate_tp1 = min(resistance_1, target_r_tp1)
         else:
             candidate_tp1 = target_r_tp1
-        candidate_tp1 = max(entry_high * 1.035, min(candidate_tp1, entry_high * 1.055))
+        candidate_tp1 = max(entry_high * 1.015, min(candidate_tp1, entry_high * 1.025))
         tp1 = round_idx_tick(candidate_tp1, is_idx)
 
-        target_r_tp2 = entry_high + 2.8 * risk_per_share
-        tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.070), is_idx)
+        target_r_tp2 = entry_high + 2.4 * risk_per_share
+        tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.045), is_idx)
     else:
-        # Intraday/Momentum Target: TP1 +2.0% - +3.5%, TP2 +4.0% - +6.5%
-        target_r_tp1 = entry_high + 1.25 * risk_per_share
-        if resistance_1 > entry_high and resistance_1 <= entry_high * 1.035:
+        # Target Momentum / Intraday: TP1 +1.4% - +2.2%, TP2 +3.5% - +5.0%
+        target_r_tp1 = entry_high + 1.2 * risk_per_share
+        if resistance_1 > entry_high and resistance_1 <= entry_high * 1.025:
             candidate_tp1 = min(resistance_1, target_r_tp1)
         else:
             candidate_tp1 = target_r_tp1
-        candidate_tp1 = max(entry_high * 1.020, min(candidate_tp1, entry_high * 1.035))
+        candidate_tp1 = max(entry_high * 1.014, min(candidate_tp1, entry_high * 1.022))
         tp1 = round_idx_tick(candidate_tp1, is_idx)
 
         target_r_tp2 = entry_high + 2.2 * risk_per_share
-        tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.045), is_idx)
+        tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.035), is_idx)
 
     rr_ratio = round((tp1 - entry_high) / risk_per_share, 2) if risk_per_share > 0 else 2.0
 
@@ -582,7 +584,7 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
     wib_now = datetime.now(pytz.timezone("Asia/Jakarta"))
     hour_float = wib_now.hour + wib_now.minute / 60.0
     now_hm = wib_now.strftime("%H:%M")
-    is_midday_lull = 11.25 <= hour_float <= 13.75
+    is_midday_lull = 10.85 <= hour_float <= 13.75
     is_afternoon_cutoff = now_hm >= config.AFTERNOON_BUY_CUTOFF_TIME
 
     # Tentukan Setup Type & Direction secara objektif (Diperketat untuk melindungi modal riil)
@@ -594,24 +596,24 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         # Bank jumbo sedang diguyur asing: Wajib AVOID (Cegah kerugian berulang di BBRI/BMRI)
         setup_type = "INSTITUTIONAL_BANK_OUTFLOW_AVOID"
         direction = "AVOID"
-    elif spread_pct > 0.70 or atr_pct > 5.5:
+    elif spread_pct > 0.50 or atr_pct > 5.5:
         # Volatilitas liar / spread lebar (seperti BREN): WAIT
         setup_type = "HIGH_SPREAD_OR_EXTREME_VOLATILITY_WAIT"
         direction = "WAIT"
-    elif est_net_ret_pct < 1.35:
+    elif est_net_ret_pct < 0.85:
         setup_type = "LOW_NET_EDGE_WAIT"
         direction = "WAIT"
     elif is_midday_lull and max_vol_surge < 1.60:
         setup_type = "MIDDAY_LULL_WAIT"
         direction = "WAIT"
         opposing_ev.append("Sesi Istirahat/Sepi (11:15 - 13:45 WIB): Tahan beli agar tidak gantung dan kena Time Exit.")
-    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.35 and cmf_val >= 0.02:
+    elif current_price >= intra_vwap and current_price > ema20_d and max_vol_surge >= 1.25 and cmf_val >= 0.05:
         setup_type = "VWAP_BREAKOUT_UPTREND"
         direction = "BUY" if score >= 74 else "WAIT"
-    elif current_price >= intra_vwap and rsi_d < 45 and not is_downtrend and cmf_val >= 0.02 and max_vol_surge >= 1.25:
+    elif current_price >= intra_vwap and rsi_d < 45 and not is_downtrend and cmf_val >= 0.05 and max_vol_surge >= 1.20:
         setup_type = "OVERSOLD_VWAP_RECLAIM"
         direction = "BUY" if score >= 74 else "WAIT"
-    elif current_price >= intra_vwap and score >= 76 and max_vol_surge >= 1.50 and current_price > ema20_d and cmf_val >= 0.02:
+    elif current_price >= intra_vwap and score >= 76 and max_vol_surge >= 1.40 and current_price > ema20_d and cmf_val >= 0.05:
         # Hanya boleh BUY jika ada volume spike kuat & tren harian aman di atas EMA20 & CMF positif
         setup_type = "INTRADAY_VWAP_SUPPORT"
         direction = "BUY"

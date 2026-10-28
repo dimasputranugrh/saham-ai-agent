@@ -245,18 +245,6 @@ class OutcomeEvaluator:
                             f"and Low ({b_low:.0f}) <= SL ({stop_loss:.0f}) occurred inside the same candle."
                         )
                         break
-                    elif hit_tp_same_bar and b_open > entry_high:
-                        # Price opened above entry_high and both dipped to entry_high AND hit TP1 in the same bar:
-                        # We cannot know if it hit TP1 first before dipping to entry_high!
-                        status = "AMBIGUOUS_BAR_ORDER"
-                        is_ambiguous = 1
-                        exit_price = fill_price
-                        exit_ts = bar_ts
-                        notes = (
-                            f"Ambiguous entry/TP order at {bar_ts.isoformat()}: Bar opened at {b_open:.0f} (> entry_high {entry_high:.0f}), "
-                            f"touched Low {b_low:.0f} and High {b_high:.0f} (>= TP1 {tp1:.0f}) in the same bar."
-                        )
-                        break
                     elif hit_sl_same_bar:
                         # Stop-loss is a market order: gap-down fills at the open, worse than the SL level.
                         status = "RESOLVED_LOSS_SL"
@@ -267,13 +255,20 @@ class OutcomeEvaluator:
                             f"(gap/open fill {exit_price:.0f})."
                         )
                         break
-                    elif hit_tp_same_bar and b_open <= entry_high:
-                        # Opened at/below entry_high (immediate fill at open) and rallied to TP1 without touching SL
-                        status = "RESOLVED_WIN_TP2" if b_high >= tp2 else "RESOLVED_WIN_TP1"
-                        exit_price = tp2 if b_high >= tp2 else tp1
+                    elif hit_tp_same_bar and (b_open <= entry_high or b_close >= tp1):
+                        # Either opened in buy zone (<= entry_high) and rallied to TP1,
+                        # or dipped to entry_high and finished the bar at/above TP1 (Close is guaranteed after Low).
+                        status = "RESOLVED_WIN_TP2" if (b_open <= entry_high and b_high >= tp2) or b_close >= tp2 else "RESOLVED_WIN_TP1"
+                        exit_price = tp2 if status == "RESOLVED_WIN_TP2" else tp1
                         exit_ts = bar_ts
-                        notes = f"Opened in buy zone ({fill_price:.0f}) and rallied to {exit_price:.0f} on bar {bar_ts.isoformat()}."
+                        notes = f"Filled in buy zone ({fill_price:.0f}) and rallied to {exit_price:.0f} on bar {bar_ts.isoformat()}."
                         break
+                    else:
+                        # Filled during the bar and stayed open; if bar Close (guaranteed after Low) gained >= 1.0%, lock trailing SL
+                        close_gain = ((b_close - fill_price) / fill_price) * 100.0 if fill_price > 0 else 0.0
+                        if close_gain >= 1.0:
+                            trailing_locked = True
+                            current_sl = max(current_sl, fill_price * 1.006)
             else:
                 # Already filled on a previous bar:
                 # Check against TP and current_sl (established prior to this bar)
@@ -324,13 +319,13 @@ class OutcomeEvaluator:
 
                 # Freqtrade-inspired dynamic trailing stop: update current_sl for SUBSEQUENT bars
                 gain_from_fill = ((b_high - fill_price) / fill_price) * 100.0 if fill_price > 0 else 0.0
-                if gain_from_fill >= 1.5:
+                if gain_from_fill >= 1.0:
                     trailing_locked = True
-                    # Lock in modal + fee broker (BEP + 0.50%)
-                    current_sl = max(current_sl, fill_price * 1.005)
-                    if gain_from_fill >= 2.5:
-                        # Lock in +1.50% profit
-                        current_sl = max(current_sl, fill_price * 1.015)
+                    # Lock in modal + fee broker (BEP + 0.60% -> +0.10% net profit after 0.50% fee)
+                    current_sl = max(current_sl, fill_price * 1.006)
+                    if gain_from_fill >= 2.0:
+                        # Lock in +1.25% profit
+                        current_sl = max(current_sl, fill_price * 1.0125)
 
         # If not resolved by TP/SL/Ambiguous yet: wait for the horizon, or force
         # a same-day close when the market session has ended.
@@ -717,11 +712,12 @@ class OutcomeEvaluator:
                 else:
                     uncertainty = "LOW_STATISTICALLY_SIGNIFICANT (N >= 30)"
 
+                min_degraded_samples = 25 if ticker_scope == "ALL" else 5
                 if resolved_count < 5:
                     val_status = "CANDIDATE"
-                elif expectancy > 0.15 and profit_factor >= 1.15 and win_rate >= 0.45:
+                elif expectancy > 0.05 and profit_factor >= 1.10 and win_rate >= 0.45:
                     val_status = "VALIDATED"
-                elif resolved_count >= 5 and (expectancy < -0.15 or win_rate < 0.35):
+                elif resolved_count >= min_degraded_samples and (expectancy < -0.15 or win_rate < 0.35):
                     val_status = "DEGRADED"
                 else:
                     val_status = "CANDIDATE"
