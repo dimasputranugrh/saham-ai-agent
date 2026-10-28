@@ -451,18 +451,31 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         stop_loss = round_idx_tick(entry_low * 0.985, is_idx)
 
     risk_per_share = max(entry_high - stop_loss, entry_high * 0.012)
-    # Intraday BEI realistis: target TP1 1.25R (sekitar +1.5% s/d +2.2% kotor).
-    # Jangan memaksa TP1 ke resistance_1 jika jaraknya terlalu jauh (> 2.5%).
-    target_r_tp1 = entry_high + 1.25 * risk_per_share
-    if resistance_1 > entry_high and resistance_1 <= entry_high * 1.025:
-        candidate_tp1 = min(resistance_1, target_r_tp1)
-    else:
-        candidate_tp1 = target_r_tp1
-    candidate_tp1 = max(entry_high * 1.020, min(candidate_tp1, entry_high * 1.035))
-    tp1 = round_idx_tick(candidate_tp1, is_idx)
+    persona = config.get_stock_persona(ticker)
+    if persona == "SWING_BLUECHIP":
+        # Target Swing Realistis untuk Bluechip: TP1 +3.5% - +5.5%, TP2 +6.0% - +9.0%
+        target_r_tp1 = entry_high + 1.6 * risk_per_share
+        if resistance_1 > entry_high and resistance_1 <= entry_high * 1.05:
+            candidate_tp1 = min(resistance_1, target_r_tp1)
+        else:
+            candidate_tp1 = target_r_tp1
+        candidate_tp1 = max(entry_high * 1.035, min(candidate_tp1, entry_high * 1.055))
+        tp1 = round_idx_tick(candidate_tp1, is_idx)
 
-    target_r_tp2 = entry_high + 2.2 * risk_per_share
-    tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.035), is_idx)
+        target_r_tp2 = entry_high + 2.8 * risk_per_share
+        tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.070), is_idx)
+    else:
+        # Intraday/Momentum Target: TP1 +2.0% - +3.5%, TP2 +4.0% - +6.5%
+        target_r_tp1 = entry_high + 1.25 * risk_per_share
+        if resistance_1 > entry_high and resistance_1 <= entry_high * 1.035:
+            candidate_tp1 = min(resistance_1, target_r_tp1)
+        else:
+            candidate_tp1 = target_r_tp1
+        candidate_tp1 = max(entry_high * 1.020, min(candidate_tp1, entry_high * 1.035))
+        tp1 = round_idx_tick(candidate_tp1, is_idx)
+
+        target_r_tp2 = entry_high + 2.2 * risk_per_share
+        tp2 = round_idx_tick(max(target_r_tp2, entry_high * 1.045), is_idx)
 
     rr_ratio = round((tp1 - entry_high) / risk_per_share, 2) if risk_per_share > 0 else 2.0
 
@@ -494,6 +507,14 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         )
     elif current_price < ema20_d:
         opposing_ev.append(f"Harga (Rp {current_price:,.0f}) masih di bawah EMA20 Daily (Rp {ema20_d:,.0f})")
+
+    # Multi-Timeframe (MTF) Alignment Filter: Jika Daily berada di bawah EMA50 dan RSI Daily < 45, dilarang BUY!
+    is_daily_bearish = (current_price < ema50_d) and (rsi_d < 45.0)
+    if is_daily_bearish:
+        score -= 18
+        opposing_ev.append(
+            f"MTF MISALIGNMENT: Struktur Daily (Harga < EMA50 Daily Rp {ema50_d:,.0f}, RSI Daily {rsi_d:.1f}) masih Bearish. Tidak boleh beli di intraday!"
+        )
 
     # Evaluasi Aliran Dana Asing / Institusi via CMF (Chaikin Money Flow)
     sector_name = config.SECTOR_MAP.get(ticker.upper(), "OTHER")
@@ -603,6 +624,10 @@ def analyze_ticker_quant(ticker: str) -> Optional[TechnicalSnapshot]:
         direction = "AVOID"
     else:
         setup_type = "CONSOLIDATION_WAIT"
+        direction = "WAIT"
+
+    if is_daily_bearish and direction == "BUY":
+        setup_type = "MTF_BEARISH_DAILY_WAIT"
         direction = "WAIT"
 
     if is_afternoon_cutoff and direction == "BUY":
@@ -860,4 +885,48 @@ def scan_watchlist_quant(tickers: list[str]) -> list[TechnicalSnapshot]:
         if snap is not None:
             results.append(snap)
     results.sort(key=lambda x: (x.quant_score, x.change_pct), reverse=True)
+    return results
+
+
+def compute_sector_rotation_matrix(snapshots: list[TechnicalSnapshot]) -> list[dict[str, Any]]:
+    """
+    Menghitung rotasi aliran dana dan momentum antar sektor BEI secara dinamis.
+    Mengembalikan ranking sektor dari yang paling akumulasi (hot) ke distribusi (cold).
+    """
+    from collections import defaultdict
+    sector_groups = defaultdict(list)
+    for s in snapshots:
+        sec = config.SECTOR_MAP.get(s.ticker.upper(), "OTHER")
+        sector_groups[sec].append(s)
+
+    results = []
+    for sec, items in sector_groups.items():
+        if not items:
+            continue
+        avg_chg = sum(i.change_pct for i in items) / len(items)
+        avg_vol = sum(max(i.daily_vol_ratio, i.intraday_vol_spike_ratio) for i in items) / len(items)
+        avg_cmf = sum(i.cmf_20 for i in items) / len(items)
+        buy_candidates = sum(1 for i in items if i.direction == "BUY")
+
+        if avg_cmf >= 0.03 and avg_chg > 0:
+            flow_status = "AKUMULASI KUAT 🔥"
+        elif avg_cmf >= 0.01:
+            flow_status = "INFLOW NETRAL 🟢"
+        elif avg_cmf <= -0.03:
+            flow_status = "DISTRIBUSI / GUYUR ❄️"
+        else:
+            flow_status = "KONSOLIDASI ⚪"
+
+        results.append({
+            "sector": sec,
+            "stock_count": len(items),
+            "avg_change_pct": round(avg_chg, 2),
+            "avg_vol_ratio": round(avg_vol, 2),
+            "avg_cmf": round(avg_cmf, 3),
+            "flow_status": flow_status,
+            "buy_candidates": buy_candidates,
+            "top_tickers": [i.ticker.replace(".JK", "") for i in sorted(items, key=lambda x: x.quant_score, reverse=True)[:3]],
+        })
+
+    results.sort(key=lambda x: (x["avg_cmf"], x["avg_change_pct"]), reverse=True)
     return results

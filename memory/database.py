@@ -900,6 +900,38 @@ class MemoryDatabase:
                 updated += 1
             return updated
 
+    def is_ticker_in_cooldown(self, ticker: str, max_consecutive_losses: int = 2) -> tuple[bool, str]:
+        """
+        Mengecek apakah suatu saham sedang dalam masa COOLDOWN (dilarang beli sementara)
+        karena baru saja mengalami kerugian beruntun (>= max_consecutive_losses).
+        """
+        norm = config.normalize_ticker(ticker)
+        sql = """
+            SELECT o.evaluation_status, o.net_return_pct, a.created_at_wib
+            FROM prediction_outcomes o
+            JOIN analysis_history a ON o.analysis_id = a.analysis_id
+            WHERE a.ticker = ? AND o.entry_filled = 1
+            ORDER BY o.rowid DESC
+            LIMIT ?
+        """
+        try:
+            with self.connect() as conn:
+                rows = conn.execute(sql, (norm, max_consecutive_losses)).fetchall()
+                if len(rows) >= max_consecutive_losses:
+                    all_loss = all(
+                        r["evaluation_status"] in ("RESOLVED_LOSS_SL", "AMBIGUOUS_BAR_ORDER")
+                        or (r["evaluation_status"] == "RESOLVED_TIME_EXIT" and (r["net_return_pct"] or 0) <= 0)
+                        for r in rows
+                    )
+                    if all_loss:
+                        return (
+                            True,
+                            f"Saham {norm} sedang dalam status COOLDOWN (mengalami {len(rows)}x transaksi rugi beruntun).",
+                        )
+        except Exception:
+            pass
+        return False, ""
+
     def _migration_v3_news_and_conversation_memory(self, conn: sqlite3.Connection) -> None:
         conn.executescript(
             """

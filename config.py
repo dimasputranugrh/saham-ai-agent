@@ -94,6 +94,18 @@ SECTOR_MAP = {
     "PWON.JK": "PROPERTY_REAL_ESTATE",
 }
 
+SWING_BLUECHIP_TICKERS = {
+    "BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "TLKM.JK", "ASII.JK",
+    "UNTR.JK", "ICBP.JK", "INDF.JK", "AMRT.JK", "MYOR.JK", "CPIN.JK",
+    "GGRM.JK", "HMSP.JK", "PWON.JK", "BSDE.JK", "CTRA.JK",
+}
+
+
+def get_stock_persona(ticker: str) -> str:
+    """Mengembalikan persona strategi saham: SWING_BLUECHIP atau MOMENTUM_GROWTH."""
+    norm = normalize_ticker(ticker)
+    return "SWING_BLUECHIP" if norm in SWING_BLUECHIP_TICKERS else "MOMENTUM_GROWTH"
+
 
 def load_portfolio() -> dict[str, dict]:
     """Memuat daftar saham yang sedang dipegang/dibeli oleh Bos."""

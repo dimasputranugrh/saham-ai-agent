@@ -11,7 +11,13 @@ from agents.ai_panel import (
     generate_weekly_ai_leaderboard_report,
     run_5_ai_panel_consensus,
 )
-from analyzer.technical import TechnicalSnapshot, get_ihsg_overview, scan_watchlist_quant, analyze_ticker_quant
+from analyzer.technical import (
+    TechnicalSnapshot,
+    get_ihsg_overview,
+    scan_watchlist_quant,
+    analyze_ticker_quant,
+    compute_sector_rotation_matrix,
+)
 from analyzer.news import (
     fetch_market_news_indonesia,
     fetch_ticker_news,
@@ -79,12 +85,21 @@ def _analyze_with_panel(
             f"Kondisi IHSG ({regime}) memiliki win rate historis sangat rendah (<8%). "
             "Semua pembelian baru ditahan menjadi WAIT demi mengamankan modal Bos."
         )
-    elif base == "AVOID":
-        final_decision = "AVOID"
-    elif base == "BUY" and panel_decision == "BUY":
-        final_decision = "BUY"
     else:
-        final_decision = "WAIT"
+        in_cd, cd_reason = orchestrator.db.is_ticker_in_cooldown(snap.ticker)
+        if in_cd and (base == "BUY" or panel_decision == "BUY"):
+            final_decision = "WAIT"
+            panel["final_decision"] = "WAIT"
+            panel["verdict_label"] = "🔴 DITAHAN COOLDOWN LOSS BERUNTUN"
+            panel["chief_summary"] = (
+                f"{cd_reason} Pembelian baru ditahan menjadi WAIT agar modal tidak tergerus saham yang sedang downtrend."
+            )
+        elif base == "AVOID":
+            final_decision = "AVOID"
+        elif base == "BUY" and panel_decision == "BUY":
+            final_decision = "BUY"
+        else:
+            final_decision = "WAIT"
 
     if final_decision != panel_decision:
         panel["final_decision"] = final_decision
@@ -174,6 +189,7 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
 
     ihsg = get_ihsg_overview()
     snapshots = scan_watchlist_quant(watchlist)
+    sector_matrix = compute_sector_rotation_matrix(snapshots)
     news_list = fetch_market_news_indonesia(max_items=12)
     sector_news_radar = scan_all_sectors_news_and_catalysts(articles_per_sector=5)
     try:
@@ -225,6 +241,7 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
         prompt_data = {
             "waktu_rapat_wib": wib_now,
             "kondisi_ihsg": ihsg,
+            "matriks_rotasi_sektor_panas_vs_dingin": sector_matrix[:5],
             "berita_pasar_hari_ini": news_list,
             "radar_perbandingan_berita_7_sektor_bei": sector_news_radar,
             "top_kandidat_saham_kuantitatif_dan_memori": enriched_picks,
@@ -271,6 +288,14 @@ def generate_morning_dsu_report(tickers: list[str] | None = None) -> str:
             lines.append(f"  ◦ _{n['title']}_")
     else:
         lines.append("• *Sentimen:* Fokus pada pergerakan teknikal & aliran volume intraday.")
+
+    if sector_matrix:
+        hot = sector_matrix[0]
+        cold = sector_matrix[-1]
+        lines.append(
+            f"• *Rotasi Sektor:* Sektor Terpanas: *{hot['sector']}* ({hot['flow_status']}, CMF {hot['avg_cmf']:+.2f}) | "
+            f"Sektor Terdingin: *{cold['sector']}* ({cold['flow_status']})"
+        )
 
     lines.extend([
         "",
@@ -577,6 +602,14 @@ def evaluate_portfolio_sell_signals(force_all: bool = False) -> str:
             urgent_count += 1
             status_jual = "💰 *WAKTUNYA JUAL AMBIL UNTUNG (Target 1 Tercapai!)*"
             saran = f"Harga sudah sampai target jual ({_fmt_rp(tp1, snap.is_idx)}). Boleh jual semua sekarang (untung *+{pnl_pct:.1f}%*) atau jual separuh!"
+        elif pnl_pct >= 2.0:
+            urgent_count += 1
+            bep_price = round(buy_price * 1.005)
+            status_jual = "🛡️ *KAWAL CUAN: NAIKKAN STOP LOSS KE BEP*"
+            saran = (
+                f"Bos sudah cuan *+{pnl_pct:.1f}%*! Segera geser Stop Loss ke harga modal "
+                f"({_fmt_rp(bep_price, snap.is_idx)} / BEP +0.5%). Posisi sekarang sudah bebas risiko rugi!"
+            )
         elif pnl_pct >= 2.5 and 15.25 <= hour_float <= 16.0:
             urgent_count += 1
             status_jual = "🔔 *JUAL SORE SEBELUM PASAR TUTUP (Amankan Uang Jajan!)*"
